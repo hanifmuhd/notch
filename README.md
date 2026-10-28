@@ -99,3 +99,7 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 17. [ ] Right-click the tray icon. You see Hide notch, Start with Windows, Refresh now and Quit. Hide notch hides the pill and the item becomes Show notch.
 18. [ ] Turn on Start with Windows, sign out and back in. The notch is there and the item is still ticked.
 19. [ ] Quit from the tray closes the app.
+
+### Idle session
+
+20. [ ] After at least 5 hours with no Claude Code use (for example first thing in the morning), run the `/usage` command from step 7 once and save the output. If the session line has no `resets …` part, tell Claude so the parser can accept it.
