@@ -28,6 +28,8 @@ const OPEN_WIDTH: f64 = 320.0;
 const MONITOR_POLL: Duration = Duration::from_secs(2);
 
 /// Last logical size placed, so a display change can re-place the window without the webview.
+/// Held for the whole of `place_window`, and `place_window` only runs on the main thread, so a
+/// re-place can never overwrite a newer size with a stale one.
 static LAST_SIZE: Mutex<(f64, f64)> = Mutex::new(CLOSED_SIZE);
 
 #[derive(Serialize)]
@@ -158,8 +160,10 @@ fn screens(app: &AppHandle) -> (Vec<(String, Rect, bool)>, Vec<f64>) {
 /// Puts the notch, `w` x `h` logical px, on the chosen screen at the chosen position (spec 5.7).
 /// A missing screen falls back to the primary one. The size is set in physical px of the
 /// target monitor so a monitor with another scale does not leave a wrong-sized window.
-fn place_window(app: &AppHandle, w: f64, h: f64) -> Result<(), String> {
-    *LAST_SIZE.lock().unwrap_or_else(|e| e.into_inner()) = (w, h);
+/// `size` None re-places at the size stored under the lock.
+fn place_window(app: &AppHandle, size: Option<(f64, f64)>) -> Result<(), String> {
+    let mut last = LAST_SIZE.lock().unwrap_or_else(|e| e.into_inner());
+    let (w, h) = remember_size(&mut last, size);
     let win = app.get_webview_window("notch").ok_or("notch window missing")?;
     let (list, scales) = screens(app);
     if list.is_empty() {
@@ -179,10 +183,22 @@ fn place_window(app: &AppHandle, w: f64, h: f64) -> Result<(), String> {
     win.set_size(PhysicalSize::new(pw as u32, ph as u32)).map_err(|e| e.to_string())
 }
 
-/// Places the window again at its last logical size.
+/// Stores `given` if there is one and returns the size to place.
+fn remember_size(slot: &mut (f64, f64), given: Option<(f64, f64)>) -> (f64, f64) {
+    if let Some(size) = given {
+        *slot = size;
+    }
+    *slot
+}
+
+/// Places the window again at its last logical size. Window calls under the `LAST_SIZE` lock
+/// need the main thread, which may itself be waiting for that lock in `set_panel_open`, so the
+/// work is queued to the main thread rather than run on the caller's thread.
 fn replace(app: &AppHandle) {
-    let (w, h) = *LAST_SIZE.lock().unwrap_or_else(|e| e.into_inner());
-    let _ = place_window(app, w, h);
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        let _ = place_window(&handle, None);
+    });
 }
 
 /// Resizes the notch for the panel, anchored to its position setting. Closed, the window
@@ -195,7 +211,7 @@ fn set_panel_open(app: AppHandle, open: bool, height: f64, width: Option<f64>) -
         let w = width.filter(|w| w.is_finite()).unwrap_or(CLOSED_SIZE.0);
         (w.clamp(36.0, 480.0), CLOSED_SIZE.1)
     };
-    place_window(&app, w, h)
+    place_window(&app, Some((w, h)))
 }
 
 /// Gives focus back to the window that had it before the notch was clicked.
@@ -277,4 +293,17 @@ fn main() {
         })
         .run(tauri::generate_context!())
         .expect("error while running Claude Notch");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::remember_size;
+
+    #[test]
+    fn re_place_uses_the_stored_size_and_a_new_size_replaces_it() {
+        let mut slot = (220.0, 36.0);
+        assert_eq!(remember_size(&mut slot, None), (220.0, 36.0));
+        assert_eq!(remember_size(&mut slot, Some((320.0, 300.0))), (320.0, 300.0));
+        assert_eq!(remember_size(&mut slot, None), (320.0, 300.0));
+    }
 }
