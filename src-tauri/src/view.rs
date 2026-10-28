@@ -1,7 +1,7 @@
 //! Turns the latest reading and settings into the JSON the webview renders (spec §5.2-5.3).
 //! All display times are local; pace maths runs in UTC.
 
-use crate::alerts::{level, Level};
+use crate::alerts::{level, AlertEvent, Level, LimitKind};
 use crate::pace::{elapsed_pct, runs_out_at, SESSION_WINDOW, WEEK_WINDOW};
 use crate::settings::Settings;
 use crate::source::Source;
@@ -60,6 +60,22 @@ fn when_text(now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
 
 pub fn reset_text(now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
     format!("Resets {}", when_text(now, resets_at))
+}
+
+/// Title and body of the toast for one alert event.
+pub fn toast_text(e: &AlertEvent, now: DateTime<Local>) -> (String, String) {
+    let name = |k: &LimitKind| match k {
+        LimitKind::Session => "Session",
+        LimitKind::Week => "Week",
+    };
+    match e {
+        AlertEvent::Crossed(k, pct, resets) => {
+            (format!("{} at {}%", name(k), pct.round()), reset_text(now, *resets))
+        }
+        AlertEvent::Full(k, resets) => {
+            (format!("{} limit full", name(k)), format!("Back {}", when_text(now, *resets)))
+        }
+    }
 }
 
 fn pill_text(name: &str, now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
@@ -316,5 +332,27 @@ mod tests {
     #[test]
     fn pill_state_json() {
         assert_eq!(serde_json::to_string(&PillState::NoClaude).unwrap(), "\"no_claude\"");
+    }
+
+    #[test]
+    fn toast_text_copy() {
+        let now = local(28, 10, 0);
+        let soon = utc(now) + Duration::minutes(90);
+        assert_eq!(
+            toast_text(&AlertEvent::Crossed(LimitKind::Session, 91.0, soon), now),
+            ("Session at 91%".to_string(), "Resets in 1h 30m".to_string())
+        );
+        assert_eq!(
+            toast_text(&AlertEvent::Full(LimitKind::Week, utc(local(30, 9, 0))), now),
+            ("Week limit full".to_string(), "Back Fri 09:00".to_string())
+        );
+        assert_eq!(
+            toast_text(&AlertEvent::Full(LimitKind::Session, soon), now).1,
+            "Back in 1h 30m"
+        );
+        assert_eq!(
+            toast_text(&AlertEvent::Full(LimitKind::Session, utc(now) - Duration::minutes(1)), now).1,
+            "Back now"
+        );
     }
 }
