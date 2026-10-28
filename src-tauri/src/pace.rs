@@ -19,7 +19,8 @@ pub fn runs_out_at(
     resets_at: DateTime<Utc>,
 ) -> Option<DateTime<Utc>> {
     let elapsed = elapsed_pct(window, now, resets_at);
-    if used_pct <= 0.0 || used_pct <= elapsed {
+    // No elapsed time means no rate to project from.
+    if !used_pct.is_finite() || used_pct <= 0.0 || used_pct <= elapsed || elapsed <= 0.0 {
         return None;
     }
     let elapsed_ms = window.num_milliseconds() as f64 * elapsed / 100.0;
@@ -75,10 +76,25 @@ mod tests {
 
     #[test]
     fn runs_out_none_after_reset() {
-        // 50 % used at 50 % elapsed projects 100 % exactly at the reset, which is not shown
+        // reset already passed and used > 100 % gets past the early exits; projection (now) is not before resets_at
+        let now = at(28, 10, 0);
+        assert_eq!(runs_out_at(120.0, SESSION_WINDOW, now, now - Duration::minutes(1)), None);
+    }
+
+    #[test]
+    fn runs_out_none_when_no_time_elapsed() {
+        let now = at(28, 10, 0);
+        // window not started yet (resets_at beyond now + window), and exactly at start
+        assert_eq!(runs_out_at(5.0, SESSION_WINDOW, now, now + SESSION_WINDOW + Duration::minutes(1)), None);
+        assert_eq!(runs_out_at(5.0, SESSION_WINDOW, now, now + SESSION_WINDOW), None);
+    }
+
+    #[test]
+    fn runs_out_none_when_not_finite() {
         let now = at(28, 10, 0);
         let resets = now + Duration::minutes(150);
-        assert_eq!(runs_out_at(50.0, SESSION_WINDOW, now, resets), None);
+        assert_eq!(runs_out_at(f64::NAN, SESSION_WINDOW, now, resets), None);
+        assert_eq!(runs_out_at(f64::INFINITY, SESSION_WINDOW, now, resets), None);
     }
 
     #[test]
