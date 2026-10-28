@@ -284,17 +284,21 @@ fn apply_visibility(app: &AppHandle) {
     let show_notch = app.try_state::<AppState>().is_none_or(|s| s.settings().show_notch);
     let fullscreen = FULLSCREEN.load(Ordering::Relaxed);
     let want = fullscreen::should_show(show_notch, fullscreen);
-    if SHOWN.swap(want, Ordering::Relaxed) == want {
+    if SHOWN.load(Ordering::Relaxed) == want {
         return;
     }
-    #[cfg(debug_assertions)]
     #[cfg(windows)]
-    eprintln!("notch visible={want} show_notch={show_notch} fullscreen={fullscreen} foreground_class={}", fullscreen::foreground_class());
-    #[cfg(windows)]
-    if let Some(hwnd) = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()) {
+    {
+        // Look the window up first: if that fails, SHOWN stays put and the next tick retries.
+        let Some(hwnd) = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()) else {
+            return;
+        };
         use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE};
         let _ = unsafe { ShowWindow(hwnd, if want { SW_SHOWNOACTIVATE } else { SW_HIDE }) };
     }
+    SHOWN.store(want, Ordering::Relaxed);
+    #[cfg(all(debug_assertions, windows))]
+    eprintln!("notch visible={want} show_notch={show_notch} fullscreen={fullscreen} foreground_class={}", fullscreen::foreground_class());
 }
 
 /// Every second checks for a full-screen app on the notch's monitor and applies the result.
@@ -307,9 +311,6 @@ fn track_fullscreen(app: AppHandle) {
         let hwnd = app.get_webview_window("notch").and_then(|w| w.hwnd().ok());
         if let (Some(device), Some(hwnd)) = (device, hwnd) {
             let single = app.available_monitors().is_ok_and(|m| m.len() == 1);
-    SHOWN.store(want, Ordering::Relaxed);
-    #[cfg(all(debug_assertions, windows))]
-    eprintln!("notch visible={want} show_notch={show_notch} fullscreen={fullscreen} foreground_class={}", fullscreen::foreground_class());
             let full = fullscreen::foreground_fullscreen_on(&device, hwnd.0 as isize)
                 || (single && fullscreen::quns_d3d_fullscreen());
             FULLSCREEN.store(full, Ordering::Relaxed);
@@ -320,6 +321,8 @@ fn track_fullscreen(app: AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        // Must be the first plugin. A second launch just exits; the running copy carries on.
+        .plugin(tauri_plugin_single_instance::init(|_app, _args, _cwd| {}))
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .on_window_event(|window, event| {
@@ -343,10 +346,10 @@ fn main() {
             let path = app.path().app_config_dir()?.join("settings.json");
             app.manage(AppState::new(settings::load(&path), path));
             tray::build(app.handle())?;
+            apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
             #[cfg(debug_assertions)]
             if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
                 let now = Local::now();
-            apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
                 let sample = AlertEvent::Crossed(alerts::LimitKind::Session, 91.0, chrono::Utc::now() + chrono::Duration::minutes(90));
                 let (title, body) = view::toast_text(&sample, now);
                 let r = app.notification().builder().title(title).body(body).show();
@@ -386,7 +389,18 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::remember_size;
+    use super::{due, remember_size};
+    use chrono::{Duration, Utc};
+
+    #[test]
+    fn refresh_is_due_after_five_minutes_of_wall_clock() {
+        let t = Utc::now();
+        assert!(!due(t + Duration::seconds(299), t));
+        assert!(due(t + Duration::seconds(300), t));
+        assert!(due(t + Duration::hours(8), t)); // woke from sleep
+        assert!(due(t - Duration::hours(1), t)); // clock moved back
+        assert!(due(t, chrono::DateTime::<Utc>::MIN_UTC)); // never refreshed
+    }
 
     #[test]
     fn re_place_uses_the_stored_size_and_a_new_size_replaces_it() {

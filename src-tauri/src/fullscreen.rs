@@ -25,7 +25,9 @@ pub fn should_show(show_notch: bool, fullscreen: bool) -> bool {
 }
 
 #[cfg(windows)]
-pub use win::{foreground_class, foreground_fullscreen_on, quns_d3d_fullscreen};
+pub use win::{foreground_fullscreen_on, quns_d3d_fullscreen};
+#[cfg(all(windows, debug_assertions))]
+pub use win::foreground_class;
 
 #[cfg(windows)]
 mod win {
@@ -55,6 +57,7 @@ mod win {
     }
 
     /// Class of the foreground window, for the debug log.
+    #[cfg(debug_assertions)]
     pub fn foreground_class() -> String {
         let fg = unsafe { GetForegroundWindow() };
         if fg.0.is_null() { String::new() } else { class_of(fg) }
