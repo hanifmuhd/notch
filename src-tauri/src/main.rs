@@ -2,6 +2,7 @@
 
 mod alerts;
 mod app_state;
+mod fullscreen;
 mod pace;
 mod placement;
 mod settings;
@@ -17,6 +18,7 @@ use settings::Settings;
 use source::SystemRunner;
 use placement::{notch_origin, pick_monitor, Rect};
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WindowEvent};
@@ -31,6 +33,13 @@ const MONITOR_POLL: Duration = Duration::from_secs(2);
 /// Held for the whole of `place_window`, and `place_window` only runs on the main thread, so a
 /// re-place can never overwrite a newer size with a stale one.
 static LAST_SIZE: Mutex<(f64, f64)> = Mutex::new(CLOSED_SIZE);
+
+/// Device name of the monitor `place_window` last put the notch on (what full screen is judged against).
+static NOTCH_MONITOR: Mutex<Option<String>> = Mutex::new(None);
+/// A full-screen app is on the notch's monitor, as of the last 1 s check.
+static FULLSCREEN: AtomicBool = AtomicBool::new(false);
+/// Whether the notch window is shown right now; the window starts visible.
+static SHOWN: AtomicBool = AtomicBool::new(true);
 
 #[derive(Serialize)]
 struct ScreenInfo {
@@ -175,6 +184,7 @@ fn place_window(app: &AppHandle, size: Option<(f64, f64)>) -> Result<(), String>
         .map_or((settings::Position::Centre, None), |s| (s.position, s.screen));
     let picked = pick_monitor(&list, wanted.as_deref());
     let scale = scales[list.iter().position(|s| std::ptr::eq(s, picked)).unwrap_or(0)];
+    *NOTCH_MONITOR.lock().unwrap_or_else(|e| e.into_inner()) = Some(picked.0.clone());
     let (pw, ph) = ((w * scale).round() as i32, (h * scale).round() as i32);
     let (x, y) = notch_origin(picked.1, scale, position, pw);
     #[cfg(debug_assertions)]
@@ -247,6 +257,43 @@ fn track_foreground(app: AppHandle) {
     });
 }
 
+/// Shows or hides the notch to match `show_notch` and the full-screen state, only on a change.
+/// ShowWindow(SW_SHOWNOACTIVATE) so showing never steals focus (spec 5.7); no lock is held here.
+fn apply_visibility(app: &AppHandle) {
+    let show_notch = app.try_state::<AppState>().is_none_or(|s| s.settings().show_notch);
+    let fullscreen = FULLSCREEN.load(Ordering::Relaxed);
+    let want = fullscreen::should_show(show_notch, fullscreen);
+    if SHOWN.swap(want, Ordering::Relaxed) == want {
+        return;
+    }
+    #[cfg(debug_assertions)]
+    #[cfg(windows)]
+    eprintln!("notch visible={want} show_notch={show_notch} fullscreen={fullscreen} foreground_class={}", fullscreen::foreground_class());
+    #[cfg(windows)]
+    if let Some(hwnd) = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()) {
+        use windows::Win32::UI::WindowsAndMessaging::{ShowWindow, SW_HIDE, SW_SHOWNOACTIVATE};
+        let _ = unsafe { ShowWindow(hwnd, if want { SW_SHOWNOACTIVATE } else { SW_HIDE }) };
+    }
+}
+
+/// Every second checks for a full-screen app on the notch's monitor and applies the result.
+/// On a single-monitor setup the D3D full-screen hint counts too (spec 5.6).
+#[cfg(windows)]
+fn track_fullscreen(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_secs(1));
+        let device = NOTCH_MONITOR.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        let hwnd = app.get_webview_window("notch").and_then(|w| w.hwnd().ok());
+        if let (Some(device), Some(hwnd)) = (device, hwnd) {
+            let single = app.available_monitors().is_ok_and(|m| m.len() == 1);
+            let full = fullscreen::foreground_fullscreen_on(&device, hwnd.0 as isize)
+                || (single && fullscreen::quns_d3d_fullscreen());
+            FULLSCREEN.store(full, Ordering::Relaxed);
+        }
+        apply_visibility(&app);
+    });
+}
+
 fn main() {
     tauri::Builder::default()
         .on_window_event(|window, event| {
@@ -288,7 +335,10 @@ fn main() {
                 }
             });
             #[cfg(windows)]
-            track_foreground(app.handle().clone());
+            {
+                track_foreground(app.handle().clone());
+                track_fullscreen(app.handle().clone());
+            }
             Ok(())
         })
         .run(tauri::generate_context!())
