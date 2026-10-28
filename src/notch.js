@@ -47,7 +47,7 @@ const splitFull = (text) => {
 function renderPill(vm) {
   const parts = [];
   if (vm.pill === 'no_claude') {
-    parts.push(el('span', 'stat__label', 'Install Claude Code'));
+    parts.push(el('span', 'stat__label', 'Install Claude Code to see your limits'));
   } else if (vm.pill === 'no_data' && vm.refreshing) {
     parts.push(el('span', 'stat__label', 'Updating…'));
   } else {
@@ -113,6 +113,7 @@ function announce(text) {
 
 let isOpen = false;
 let pinned = false;
+let menuOpen = false; // a native <select> popup is showing; it can blur the page in WebView2
 let closeTimer;
 let fadeTimer;
 
@@ -166,9 +167,9 @@ notch.addEventListener('mouseenter', () => setOpen(true));
 notch.addEventListener('mouseleave', () => {
   if (!pinned) closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY);
 });
-// Clicking another window unpins. A native <select> popup can also blur the page, so not then.
+// Clicking another window unpins, but not while a select's own popup takes the focus.
 window.addEventListener('blur', () => {
-  if (pinned && !(document.activeElement instanceof HTMLSelectElement)) { pinned = false; setOpen(false); }
+  if (pinned && !menuOpen) { pinned = false; setOpen(false); }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -189,6 +190,17 @@ let settings = null;
 let distros = [];
 const screenSel = $('#s-screen');
 const sourceSel = $('#s-source');
+const MENU_KEYS = [' ', 'Enter', 'F4'];
+
+for (const sel of [screenSel, sourceSel]) {
+  sel.addEventListener('pointerdown', () => { menuOpen = true; });
+  sel.addEventListener('keydown', (e) => {
+    if (MENU_KEYS.includes(e.key) || (e.altKey && e.key === 'ArrowDown')) menuOpen = true;
+    else if (e.key === 'Escape') menuOpen = false;
+  });
+  sel.addEventListener('change', () => { menuOpen = false; });
+  sel.addEventListener('blur', () => { menuOpen = false; });
+}
 
 const sourceValue = (src) => (src.kind === 'wsl' ? 'wsl:' + src.distro : src.kind);
 

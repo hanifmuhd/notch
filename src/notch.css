@@ -67,6 +67,7 @@ body { color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-h
 .notch.is-open .pill { max-width: var(--panel-width); overflow: hidden; } /* a wide (full, stale) pill must not peek out beside the panel */
 .pill:active { transform: scale(.98); }
 .pill:focus-visible { outline: 2px solid var(--focus); outline-offset: -4px; transition: none; } /* inset: the ring sits on the black pill, so it shows over any wallpaper */
+.notch.is-open:has(.pill:focus-visible) .panel { outline: 2px solid var(--focus); outline-offset: -4px; } /* the open panel covers the focused pill, so the panel carries its ring */
 .stat { display: inline-flex; align-items: baseline; gap: 8px; }
 .stat__label { color: var(--ink-muted); }
 .stat__value { font-weight: 600; }
