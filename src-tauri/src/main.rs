@@ -113,11 +113,33 @@ fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
         .collect()
 }
 
-/// Resizes the notch for the panel, keeping the top-centre point fixed.
 #[tauri::command]
-fn set_panel_open(app: AppHandle, open: bool, height: f64) -> Result<(), String> {
+async fn list_distros() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(|| source::list_distros(&SystemRunner)).await.unwrap_or_default()
+}
+
+/// Opens the Claude Code install guide in the default browser.
+#[tauri::command]
+fn open_install_page() -> Result<(), String> {
+    // shortcut: URL unverified (R22), owner to check before release.
+    std::process::Command::new("explorer.exe")
+        .arg("https://docs.claude.com/en/docs/claude-code/setup")
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// Resizes the notch for the panel, keeping the top-centre point fixed. Closed, the window
+/// takes the pill's measured `width` (its text changes with the state, spec 5.2/5.7).
+#[tauri::command]
+fn set_panel_open(app: AppHandle, open: bool, height: f64, width: Option<f64>) -> Result<(), String> {
     let win = app.get_webview_window("notch").ok_or("notch window missing")?;
-    let (w, h) = if open { (OPEN_WIDTH, height.clamp(36.0, 600.0)) } else { CLOSED_SIZE };
+    let (w, h) = if open {
+        (OPEN_WIDTH, height.clamp(36.0, 600.0))
+    } else {
+        let w = width.filter(|w| w.is_finite()).unwrap_or(CLOSED_SIZE.0);
+        (w.clamp(36.0, 480.0), CLOSED_SIZE.1)
+    };
     let scale = win.scale_factor().map_err(|e| e.to_string())?;
     let pos = win.outer_position().map_err(|e| e.to_string())?;
     let old = win.outer_size().map_err(|e| e.to_string())?;
@@ -169,7 +191,9 @@ fn main() {
             save_settings,
             list_screens,
             set_panel_open,
-            focus_previous
+            focus_previous,
+            list_distros,
+            open_install_page
         ])
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("settings.json");

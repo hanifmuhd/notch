@@ -157,6 +157,14 @@ pub fn usage_command(source: &Source) -> (String, Vec<String>) {
     (program.to_string(), args.into_iter().map(String::from).collect())
 }
 
+/// Installed WSL distros in `wsl -l` order (listing does not boot any of them).
+pub fn list_distros(runner: &dyn Runner) -> Vec<String> {
+    runner
+        .run("wsl.exe", &["-l", "-q"], PROBE_TIMEOUT)
+        .map(|out| lines(&out).map(String::from).collect())
+        .unwrap_or_default()
+}
+
 pub fn wsl_running(runner: &dyn Runner, distro: &str) -> bool {
     runner
         .run("wsl.exe", &["-l", "--running", "-q"], PROBE_TIMEOUT)
@@ -272,6 +280,14 @@ mod tests {
         assert!(!wsl_running(&r, "Ubuntu"));
         let r = FakeRunner::new(&[("wsl.exe -l --running -q", fail())]);
         assert!(!wsl_running(&r, "Ubuntu"));
+    }
+
+    #[test]
+    fn list_distros_skips_blanks_and_survives_failure() {
+        let r = FakeRunner::new(&[("wsl.exe -l -q", Ok("Ubuntu\r\n\r\nDebian\r\n".into()))]);
+        assert_eq!(list_distros(&r), ["Ubuntu", "Debian"]);
+        let r = FakeRunner::new(&[("wsl.exe -l -q", fail())]);
+        assert!(list_distros(&r).is_empty());
     }
 
     #[test]
