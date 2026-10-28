@@ -144,14 +144,31 @@ mod tests {
     fn full_jump_emits_only_full() {
         let r = at(2);
         let (s, _) = evaluate(&AlertState::default(), &reading(85.0, 0.0, r), &T);
-        let (_, e) = evaluate(&s, &reading(100.0, 0.0, r), &T);
+        let (s, e) = evaluate(&s, &reading(100.0, 0.0, r), &T);
         assert_eq!(e, vec![AlertEvent::Full(LimitKind::Session, r)]);
+        let (_, e) = evaluate(&s, &reading(100.0, 0.0, r), &T);
+        assert!(e.is_empty());
+    }
+
+    #[test]
+    fn small_reset_drift_does_not_rearm() {
+        let r = at(2);
+        let (s, _) = evaluate(&AlertState::default(), &reading(100.0, 0.0, r), &T);
+        let (_, e) = evaluate(&s, &reading(100.0, 0.0, r + Duration::seconds(30)), &T);
+        assert!(e.is_empty());
+    }
+
+    #[test]
+    fn full_refires_in_new_window() {
+        let (s, _) = evaluate(&AlertState::default(), &reading(100.0, 0.0, at(2)), &T);
+        let (_, e) = evaluate(&s, &reading(100.0, 0.0, at(3)), &T);
+        assert_eq!(e, vec![AlertEvent::Full(LimitKind::Session, at(3))]);
     }
 
     #[test]
     fn reset_rearms() {
         let (s, e) = evaluate(&AlertState::default(), &reading(92.0, 0.0, at(2)), &T);
-        assert_eq!(e.len(), 1);
+        assert_eq!(e, vec![AlertEvent::Crossed(LimitKind::Session, 92.0, at(2))]);
         let (_, e) = evaluate(&s, &reading(92.0, 0.0, at(3)), &T);
         assert_eq!(e, vec![AlertEvent::Crossed(LimitKind::Session, 92.0, at(3))]);
     }
