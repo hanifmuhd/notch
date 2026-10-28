@@ -54,8 +54,10 @@ fn main() {
                 let m = mi.monitorInfo.rcMonitor;
                 // covers = window rect contains the whole monitor rect (window may overhang)
                 let covers = wr.left <= m.left && wr.top <= m.top && wr.right >= m.right && wr.bottom >= m.bottom;
+                let c = name(&cls[..n]);
+                let excluded = ["Progman", "WorkerW", "Shell_TrayWnd"].contains(&c.as_str());
                 let quns = SHQueryUserNotificationState().map(|s| s.0.to_string()).unwrap_or_else(|e| format!("err {e}"));
-                println!("class={} rect={} monitor={} {} covers={} quns={}", name(&cls[..n]), rect(&wr), name(&mi.szDevice), rect(&m), covers, quns);
+                println!("class={} rect={} monitor={} {} covers={} excluded={} fullscreen={} quns={}", c, rect(&wr), name(&mi.szDevice), rect(&m), covers, excluded, covers && !excluded, quns);
             }
             sleep(Duration::from_secs(1));
         }
