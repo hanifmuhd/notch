@@ -5,8 +5,7 @@ Probe: `src-tauri/examples/fullscreen_probe.rs`. Once per second it prints the f
 Run it (stops by itself with `--seconds N`, default runs until Ctrl+C):
 
 ```
-cd C:\Users\hanif\code\notch\src-tauri
-cargo run --example fullscreen_probe
+powershell.exe -NoProfile -Command '$env:Path = [Environment]::GetEnvironmentVariable("Path","User") + ";" + [Environment]::GetEnvironmentVariable("Path","Machine"); $env:CARGO_TARGET_DIR = "C:\Users\hanif\code\notch-target"; Set-Location \\wsl.localhost\Ubuntu\home\hanif\own\notch-project\src-tauri; cargo run --example fullscreen_probe'
 ```
 
 ## S2 matrix (owner to fill in)
