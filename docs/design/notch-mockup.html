@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notch states</title>
+<meta name="description" content="Every state of the monitor-claude notch: normal, open, focus, near the limit, full and stale.">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Hallmark · shape: state sheet · genre: modern-minimal · theme: custom (taste-skill app style data-terminal, seed 1480439416) · job: try · idea: "the window's clock becomes a 1px tick on each meter, so you see if you are using faster than time passes" · vibe: "quiet black notch, precise numbers"
+ * paper: oklch(0% 0 0) · accent: oklch(63% 0.13 255) · display: Public Sans · body: Public Sans · hero: the live notch · nav: none · footer: none · imagery: none · signature: the pace tick
+ * axes: absolute/sans/blue · posture: component · contrast: pass · fold: pass · v2.0.0 */
+/* Hallmark · pre-emit critique: P4 H5 E4 S4 R5 V4 · weakest: P, a dark pill is the expected shape; the pace tick gives it an argument (time vs use) */
+/* Hallmark · waive 7b · surface: absolute, notch black matches a hardware display cutout · the notch must read as part of the screen bezel, not a tinted card */
+
+:root {
+  /* primitive */
+  --black: #000000;
+  --white: #ffffff;
+  --gray-950: #171719;
+  --gray-800: #1e1e21;
+  --gray-700: #3a3a3e;
+  --gray-400: #8a8c92;
+  --gray-200: #d6d7da;
+  --blue-500: #4a8ad6;
+  --amber-500: #d9a441;
+  --red-500: #e5566f;
+  --slate-600: #4b5563;
+  --slate-500: #5d6675;
+  --font-sans: "Public Sans", "Segoe UI", system-ui, sans-serif;
+
+  /* semantic */
+  --surface-notch: var(--black);
+  --ink: var(--white);
+  --ink-muted: var(--gray-400);
+  --track: var(--gray-700);
+  --fill: var(--gray-200);
+  --pace: var(--blue-500);
+  --warn: var(--amber-500);
+  --danger: var(--red-500);
+  --focus: var(--blue-500);
+  --hover: var(--gray-800);
+  --sheet: var(--gray-950);
+  --desk: var(--slate-600);
+  --desk-2: var(--slate-500);
+
+  /* component */
+  --notch-radius: 14px;
+  --notch-pad-x: 18px;
+  --notch-height: 36px;
+  --panel-width: 320px;
+  --panel-pad: 16px;
+  --meter-height: 6px;
+  --fs-value: 20px;
+  --fs-pill: 14px;
+  --fs-label: 13px;
+  --fs-small: 12px;
+  --ease-out: cubic-bezier(.2, .8, .2, 1);
+  --shadow-float: 0 12px 28px rgb(0 0 0 / .35);
+}
+
+html, body { overflow-x: clip; }
+html { -webkit-font-smoothing: antialiased; }
+body { margin: 0; padding: 24px 16px 48px; background: var(--sheet); color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-height: 1.5; }
+.wrap { max-width: 1120px; margin: 0 auto; }
+h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; text-wrap: balance; }
+.lede { color: var(--ink-muted); margin: 0 0 24px; font-size: 15px; text-wrap: pretty; max-width: 60ch; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 24px; align-items: start; }
+.grid + .grid { margin-top: 32px; }
+figure { margin: 0; }
+figcaption { margin-top: 8px; font-size: 14px; color: var(--ink-muted); text-wrap: pretty; }
+figcaption strong { color: var(--ink); font-weight: 600; }
+
+/* the screen top the notch hangs from */
+.screen { position: relative; height: 280px; background: var(--desk); border-radius: 8px; overflow: hidden; }
+.screen--short { height: 72px; }
+
+/* notch */
+.notch { position: absolute; top: 0; left: 50%; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+.pill {
+  display: flex; align-items: center; gap: 16px;
+  min-height: var(--notch-height); padding: 8px var(--notch-pad-x);
+  background: var(--surface-notch); color: var(--ink);
+  border: 0; border-radius: 0 0 var(--notch-radius) var(--notch-radius);
+  font: inherit; font-size: var(--fs-pill); white-space: nowrap; cursor: pointer;
+  transition-property: transform, background-color; transition-duration: 150ms; transition-timing-function: var(--ease-out);
+}
+.pill:hover, .pill.is-hover { background: var(--hover); }
+.pill:active { transform: scale(.98); }
+.pill:focus-visible, .pill.is-focus { outline: 2px solid var(--focus); outline-offset: -4px; transition: none; } /* inset: the ring sits on the black pill, so it shows over any wallpaper */
+.stat { display: inline-flex; align-items: baseline; gap: 8px; }
+.stat__label { color: var(--ink-muted); }
+.stat__value { font-weight: 600; }
+.icon { width: 15px; height: 15px; flex: none; align-self: center; }
+.is-warn { color: var(--warn); }
+.is-danger { color: var(--danger); }
+.is-stale .stat__value, .is-stale .stat__label { color: var(--ink-muted); }
+.is-stale .stat__value { font-weight: 500; }
+
+/* panel: opens in place from the pill */
+.panel {
+  position: absolute; top: 0; left: 50%; width: var(--panel-width);
+  padding: var(--panel-pad) 20px 12px;
+  background: var(--surface-notch); color: var(--ink); border-radius: 0 0 20px 20px; box-shadow: var(--shadow-float); /* taste-skill-ignore: the panel is a real overlay floating above other windows */
+  opacity: 0; visibility: hidden; transform: translateX(-50%) scale(.9) translateY(-6px); transform-origin: top center;
+  transition: opacity 120ms var(--ease-out), transform 120ms var(--ease-out), visibility 0s linear 120ms;
+}
+.notch.is-open .panel {
+  opacity: 1; visibility: visible; transform: translateX(-50%);
+  transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out), visibility 0s;
+}
+.limit + .limit { margin-top: 16px; }
+.limit__head { display: flex; justify-content: space-between; align-items: baseline; }
+.limit__name { font-size: var(--fs-label); color: var(--ink-muted); }
+.limit__value { font-size: var(--fs-value); font-weight: 600; }
+.meter { position: relative; height: var(--meter-height); margin: 8px 0; background: var(--track); border-radius: 3px; }
+.meter__fill { position: absolute; inset: 0 auto 0 0; background: var(--fill); border-radius: 3px; }
+.meter__fill.is-warn { background: var(--warn); }
+.meter__fill.is-danger { background: var(--danger); }
+.meter__pace { position: absolute; top: -4px; bottom: -4px; width: 1px; background: var(--pace); }
+.limit__foot { display: flex; justify-content: space-between; gap: 12px; font-size: var(--fs-small); color: var(--ink-muted); }
+.pace-key { display: inline-flex; align-items: center; gap: 8px; }
+.pace-key::before { content: ""; width: 1px; height: 12px; background: var(--pace); }
+.panel__foot { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; font-size: var(--fs-small); color: var(--ink-muted); }
+.icon-btn {
+  display: grid; place-items: center; width: 40px; height: 40px;
+  background: transparent; color: var(--ink-muted); border: 0; border-radius: 999px; cursor: pointer;
+  transition-property: background-color, color, transform; transition-duration: 150ms; transition-timing-function: var(--ease-out);
+}
+.icon-btn:hover { background: var(--hover); color: var(--ink); }
+.icon-btn:active { transform: scale(.94); }
+.icon-btn:disabled { color: var(--track); cursor: not-allowed; background: transparent; }
+.icon-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; transition: none; }
+.icon-btn[aria-busy="true"] svg { animation: spin 900ms linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.panel__actions { display: flex; gap: 4px; margin-right: -12px; }
+.pill .icon[hidden] { display: none; }
+
+/* settings view, inside the same panel */
+.settings__head { display: flex; align-items: center; gap: 4px; margin: -8px 0 8px -12px; }
+.settings__title { font-size: 16px; font-weight: 600; }
+.setting + .setting { margin-top: 12px; }
+.setting__head { display: flex; justify-content: space-between; align-items: baseline; }
+.setting__head label { font-size: var(--fs-label); color: var(--ink-muted); }
+.setting__value { font-size: var(--fs-value); font-weight: 600; }
+.range { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 32px; margin: 0; background: transparent; cursor: pointer; }
+.range::-webkit-slider-runnable-track { height: var(--meter-height); background: var(--track); border-radius: 3px; }
+.range::-moz-range-track { height: var(--meter-height); background: var(--track); border-radius: 3px; }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; background: var(--ink); border: 0; border-radius: 50%; }
+.range::-moz-range-thumb { width: 22px; height: 22px; background: var(--ink); border: 0; border-radius: 50%; }
+.range:focus-visible { outline: none; }
+.range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+.range:focus-visible::-moz-range-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+.setting__hint { font-size: var(--fs-small); color: var(--ink-muted); margin: 0; }
+
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pill, .panel, .notch.is-open .panel, .icon-btn { transition: opacity 120ms linear, visibility 0s; }
+  .panel, .notch.is-open .panel { transform: translateX(-50%); }
+  .pill:active, .icon-btn:active { transform: none; }
+  .icon-btn[aria-busy="true"] svg { animation: none; }
+}
+</style>
+</head>
+<body>
+<main class="wrap">
+  <h1>Notch states</h1>
+  <p class="lede">Sample numbers. The blue tick on each bar marks how much of that window’s time has passed: fill past the tick means you are using it faster than the clock.</p>
+
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  </svg>
+
+  <div class="grid">
+    <figure>
+      <div class="screen">
+        <div class="notch" data-live>
+          <button class="pill" aria-expanded="false" aria-controls="panel-live">
+            <svg class="icon is-warn" aria-hidden="true" data-pill-alert hidden><use href="#i-alert"/></svg>
+            <span class="stat"><span class="stat__label">Session</span><span class="stat__value" data-v="session">42%</span></span>
+            <span class="stat"><span class="stat__label">Week</span><span class="stat__value" data-v="week">68%</span></span>
+          </button>
+          <div class="panel" id="panel-live" role="region" aria-label="Claude usage">
+            <div data-view="usage">
+              <div class="limit">
+                <div class="limit__head"><span class="limit__name">Session, 5 hours</span><span class="limit__value" data-v="session">42%</span></div>
+                <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="42" aria-label="Session" aria-valuetext="42% used, 56% of time passed"><div class="meter__fill" data-fill="session" style="width:42%"></div><div class="meter__pace" style="left:56%"></div></div>
+                <div class="limit__foot"><span>Resets in 2h 13m</span><span class="pace-key">56% of time passed</span></div>
+              </div>
+              <div class="limit">
+                <div class="limit__head"><span class="limit__name">Week, 7 days</span><span class="limit__value" data-v="week">68%</span></div>
+                <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="68" aria-label="Week" aria-valuetext="68% used, 73% of time passed"><div class="meter__fill" data-fill="week" style="width:68%"></div><div class="meter__pace" style="left:73%"></div></div>
+                <div class="limit__foot"><span>Resets Fri 09:00</span><span class="pace-key">73% of time passed</span></div>
+              </div>
+              <div class="panel__foot"><span>Updated 10:51</span>
+                <span class="panel__actions">
+                  <button class="icon-btn" type="button" aria-label="Alert settings" data-open-settings><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+                  <button class="icon-btn" type="button" aria-label="Refresh now" data-refresh><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+                </span>
+              </div>
+            </div>
+            <div data-view="settings" hidden>
+              <div class="settings__head">
+                <button class="icon-btn" type="button" aria-label="Back to usage" data-close-settings><svg class="icon" aria-hidden="true"><use href="#i-back"/></svg></button>
+                <span class="settings__title">Alerts</span>
+              </div>
+              <div class="setting">
+                <div class="setting__head"><label for="t-session">Session alert at</label><output class="setting__value" for="t-session" data-out="session">90%</output></div>
+                <input class="range" id="t-session" type="range" min="50" max="99" step="1" value="90" data-threshold="session">
+              </div>
+              <div class="setting">
+                <div class="setting__head"><label for="t-week">Week alert at</label><output class="setting__value" for="t-week" data-out="week">90%</output></div>
+                <input class="range" id="t-week" type="range" min="50" max="99" step="1" value="90" data-threshold="week">
+              </div>
+              <p class="setting__hint">Saved as you change it. Full always alerts at 100%.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><strong>Live.</strong> Hover, click or press Enter to open; Esc closes. Open the gear and drag the week alert below 68%: the pill turns amber.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen">
+        <div class="notch is-open">
+          <div class="panel" role="presentation">
+            <div class="limit">
+              <div class="limit__head"><span class="limit__name">Session, 5 hours</span><span class="limit__value is-warn">91%</span></div>
+              <div class="meter"><div class="meter__fill is-warn" style="width:91%"></div><div class="meter__pace" style="left:70%"></div></div>
+              <div class="limit__foot"><span>Resets in 1h 30m</span><span class="pace-key">70% of time passed</span></div>
+            </div>
+            <div class="limit">
+              <div class="limit__head"><span class="limit__name">Week, 7 days</span><span class="limit__value">70%</span></div>
+              <div class="meter"><div class="meter__fill" style="width:70%"></div><div class="meter__pace" style="left:73%"></div></div>
+              <div class="limit__foot"><span>Resets Fri 09:00</span><span class="pace-key">73% of time passed</span></div>
+            </div>
+            <div class="panel__foot"><span>Updating…</span>
+              <button class="icon-btn" type="button" aria-label="Refreshing" aria-busy="true" tabindex="-1"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <figcaption><strong>Open, near the limit, refreshing.</strong> Session fill is past its tick, so it is running out faster than the clock.</figcaption>
+    </figure>
+  </div>
+
+  <div class="grid">
+
+    <figure>
+      <div class="screen screen--short">
+        <div class="notch"><span class="pill is-focus" role="presentation">
+          <span class="stat"><span class="stat__label">Session</span><span class="stat__value">42%</span></span>
+          <span class="stat"><span class="stat__label">Week</span><span class="stat__value">68%</span></span>
+        </span></div>
+      </div>
+      <figcaption><strong>Keyboard focus.</strong> A blue ring, shown at once.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen screen--short">
+        <div class="notch"><span class="pill" role="presentation">
+          <svg class="icon is-warn" aria-hidden="true"><use href="#i-alert"/></svg>
+          <span class="stat"><span class="stat__label">Session</span><span class="stat__value is-warn">91%</span></span>
+          <span class="stat"><span class="stat__label">Week</span><span class="stat__value">70%</span></span>
+        </span></div>
+      </div>
+      <figcaption><strong>90% or more.</strong> Alert icon and amber number. Same rule for the week.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen screen--short">
+        <div class="notch"><span class="pill" role="presentation">
+          <svg class="icon is-danger" aria-hidden="true"><use href="#i-alert"/></svg>
+          <span class="stat"><span class="stat__label">Session full, back in</span><span class="stat__value is-danger">1h 20m</span></span>
+          <span class="stat"><span class="stat__label">Week</span><span class="stat__value">74%</span></span>
+        </span></div>
+      </div>
+      <figcaption><strong>Full.</strong> Shows when the session comes back.</figcaption>
+    </figure>
+
+    <figure>
+      <div class="screen screen--short">
+        <div class="notch"><span class="pill is-stale" role="presentation">
+          <span class="stat"><span class="stat__label">Session</span><span class="stat__value">42%</span></span>
+          <span class="stat"><span class="stat__label">Week</span><span class="stat__value">68%</span></span>
+          <span class="stat"><span class="stat__label">As of</span><span class="stat__value">10:51</span></span>
+        </span></div>
+      </div>
+      <figcaption><strong>Can’t refresh.</strong> WSL off or offline: last numbers in grey, with their time.</figcaption>
+    </figure>
+  </div>
+  <p class="sr-only" role="status" aria-atomic="true" id="announce"></p>
+</main>
+<script>
+  const notch = document.querySelector('[data-live]');
+  const pill = notch.querySelector('.pill');
+  let pinned = false, closeTimer;
+  const setOpen = (open) => {
+    notch.classList.toggle('is-open', open); pill.setAttribute('aria-expanded', String(open));
+    if (!open) { notch.querySelector('[data-view="usage"]').hidden = false; notch.querySelector('[data-view="settings"]').hidden = true; }
+  };
+  pill.addEventListener('click', () => { pinned = !pinned; setOpen(pinned); });
+  notch.addEventListener('mouseenter', () => { clearTimeout(closeTimer); setOpen(true); });
+  notch.addEventListener('mouseleave', () => { if (!pinned) closeTimer = setTimeout(() => setOpen(false), 150); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { pinned = false; setOpen(false); pill.focus(); } });
+  const usage = { session: 42, week: 68 };
+  const thresholds = { session: 90, week: 90 };
+  const views = { usage: notch.querySelector('[data-view="usage"]'), settings: notch.querySelector('[data-view="settings"]') };
+  const showView = (name, focusEl) => { for (const [k, v] of Object.entries(views)) v.hidden = k !== name; focusEl.focus(); };
+  notch.querySelector('[data-open-settings]').addEventListener('click', () => showView('settings', notch.querySelector('[data-close-settings]')));
+  notch.querySelector('[data-close-settings]').addEventListener('click', () => showView('usage', notch.querySelector('[data-open-settings]')));
+  const applyAlerts = () => {
+    let any = false;
+    for (const k of Object.keys(usage)) {
+      const warn = usage[k] >= thresholds[k];
+      any ||= warn;
+      notch.querySelectorAll(`[data-v="${k}"]`).forEach((el) => el.classList.toggle('is-warn', warn));
+      notch.querySelector(`[data-fill="${k}"]`).classList.toggle('is-warn', warn);
+    }
+    notch.querySelector('[data-pill-alert]').hidden = !any;
+  };
+  notch.querySelectorAll('[data-threshold]').forEach((input) => input.addEventListener('input', () => {
+    const k = input.dataset.threshold;
+    thresholds[k] = Number(input.value);
+    notch.querySelector(`[data-out="${k}"]`).textContent = input.value + '%';
+    applyAlerts();
+  }));
+  applyAlerts();
+  const btn = notch.querySelector('[data-refresh]');
+  btn.addEventListener('click', () => {
+    btn.setAttribute('aria-busy', 'true'); btn.setAttribute('aria-label', 'Refreshing');
+    setTimeout(() => { btn.removeAttribute('aria-busy'); btn.setAttribute('aria-label', 'Refresh now'); document.getElementById('announce').textContent = 'Usage updated: session 42%, week 68%'; }, 1200);
+  });
+</script>
+</body>
+</html>
