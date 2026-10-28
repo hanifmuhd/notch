@@ -7,6 +7,8 @@ mod pace;
 #[allow(dead_code)]
 mod settings;
 #[allow(dead_code)]
+mod source;
+#[allow(dead_code)]
 mod usage;
 
 fn main() {
