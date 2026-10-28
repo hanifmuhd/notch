@@ -13,7 +13,7 @@ mod view;
 
 use alerts::AlertEvent;
 use app_state::AppState;
-use chrono::Local;
+use chrono::{DateTime, Local, Utc};
 use serde::Serialize;
 use settings::Settings;
 use source::SystemRunner;
@@ -27,6 +27,8 @@ use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize
 use view::ViewModel;
 
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
+/// How often the refresh loop checks the wall clock; a plain 300 s sleep may not count suspend time.
+const REFRESH_CHECK: Duration = Duration::from_secs(15);
 const CLOSED_SIZE: (f64, f64) = (220.0, 36.0);
 const OPEN_WIDTH: f64 = 320.0;
 const MONITOR_POLL: Duration = Duration::from_secs(2);
@@ -42,6 +44,8 @@ static NOTCH_MONITOR: Mutex<Option<String>> = Mutex::new(None);
 static FULLSCREEN: AtomicBool = AtomicBool::new(false);
 /// Whether the notch window is shown right now; the window starts visible.
 static SHOWN: AtomicBool = AtomicBool::new(true);
+/// Wall-clock start of the latest refresh, automatic or manual.
+static LAST_REFRESH_START: Mutex<DateTime<Utc>> = Mutex::new(DateTime::<Utc>::MIN_UTC);
 
 #[derive(Serialize)]
 struct ScreenInfo {
@@ -76,6 +80,11 @@ fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
     vm
 }
 
+/// True once `REFRESH_EVERY` of wall-clock time has passed since `last_start` (or the clock went back).
+fn due(now: DateTime<Utc>, last_start: DateTime<Utc>) -> bool {
+    now < last_start || (now - last_start).num_seconds() >= REFRESH_EVERY.as_secs() as i64
+}
+
 /// One refresh cycle; ignored while another is running. Runs again once if a source change
 /// arrived meanwhile.
 fn refresh(app: &AppHandle) {
@@ -83,6 +92,7 @@ fn refresh(app: &AppHandle) {
     if !state.try_start_refresh() {
         return;
     }
+    *LAST_REFRESH_START.lock().unwrap_or_else(|e| e.into_inner()) = Utc::now();
     loop {
         emit(app, None);
         // A panic must still release the in-flight slot.
@@ -93,6 +103,7 @@ fn refresh(app: &AppHandle) {
         if !state.take_refresh_again() || !state.try_start_refresh() {
             break;
         }
+        *LAST_REFRESH_START.lock().unwrap_or_else(|e| e.into_inner()) = Utc::now();
     }
 }
 
@@ -335,6 +346,7 @@ fn main() {
             #[cfg(debug_assertions)]
             if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
                 let now = Local::now();
+            apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
                 let sample = AlertEvent::Crossed(alerts::LimitKind::Session, 91.0, chrono::Utc::now() + chrono::Duration::minutes(90));
                 let (title, body) = view::toast_text(&sample, now);
                 let r = app.notification().builder().title(title).body(body).show();
@@ -342,8 +354,11 @@ fn main() {
             }
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
-                refresh(&handle);
-                std::thread::sleep(REFRESH_EVERY);
+                let last = *LAST_REFRESH_START.lock().unwrap_or_else(|e| e.into_inner());
+                if due(Utc::now(), last) {
+                    refresh(&handle);
+                }
+                std::thread::sleep(REFRESH_CHECK);
             });
             // Places at start, then again whenever a monitor is plugged, unplugged or changed.
             let handle = app.handle().clone();

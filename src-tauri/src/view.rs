@@ -42,6 +42,9 @@ pub struct ViewModel {
     pub refreshing: bool,
 }
 
+/// A reading older than this counts as stale even if the last refresh worked (e.g. after sleep).
+const MAX_FRESH_AGE: Duration = Duration::minutes(11);
+
 /// "now", "in 2h 13m" / "in 45m" (rounded up, within 24 h), or "Fri 09:00" beyond that.
 fn when_text(now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
     let ahead = resets_at - now.with_timezone(&Utc);
@@ -157,6 +160,7 @@ pub fn build(
         ),
         (_, None) => (PillState::NoData, None, "No reading yet".to_string()),
         (_, Some(r)) => {
+            let last_ok = last_ok && now.with_timezone(&Utc) - r.fetched_at <= MAX_FRESH_AGE;
             let at = r.fetched_at.with_timezone(&Local).format("%H:%M");
             let updated = if last_ok { format!("Updated {at}") } else { format!("As of {at}") };
             let full = if session.level == Level::Full {
@@ -268,6 +272,22 @@ mod tests {
         assert_eq!(vm.updated_text, "As of 10:51");
         let ok = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!((ok.pill, ok.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
+    }
+
+    #[test]
+    fn old_reading_is_stale() {
+        let now = local(28, 11, 3); // reading() was fetched at 10:51
+        let r = reading(10.0, 10.0, now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Stale, "As of 10:51"));
+    }
+
+    #[test]
+    fn recent_reading_not_stale() {
+        let now = local(28, 10, 55);
+        let r = reading(10.0, 10.0, now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
     #[test]
