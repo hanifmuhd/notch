@@ -10,6 +10,8 @@ mod settings;
 mod source;
 #[allow(dead_code)]
 mod usage;
+#[allow(dead_code)]
+mod view;
 
 fn main() {
     tauri::Builder::default()
