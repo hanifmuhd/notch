@@ -73,6 +73,9 @@ fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Loca
     let now_utc = now.with_timezone(&Utc);
     let lvl = level(limit.used_pct, threshold);
     let pace = elapsed_pct(window, now_utc, limit.resets_at);
+    let clamped = limit.used_pct.clamp(0.0, 100.0);
+    // Only a Full limit may read 100 %; 99.5 rounds up but is still Alert.
+    let shown = if lvl == Level::Full { clamped.round() } else { clamped.round().min(99.0) };
     let runs_out_text = match lvl {
         Level::Full => None,
         _ => runs_out_at(limit.used_pct, window, now_utc, limit.resets_at).map(|t| {
@@ -80,8 +83,8 @@ fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Loca
         }),
     };
     LimitView {
-        value_text: format!("{}%", limit.used_pct.round()),
-        used_pct: limit.used_pct.clamp(0.0, 100.0),
+        value_text: format!("{}%", shown),
+        used_pct: clamped,
         pace_pct: pace,
         level: lvl,
         reset_text: reset_text(now, limit.resets_at),
@@ -125,6 +128,7 @@ pub fn build(
         (_, None) => (PillState::NoData, None, "No reading yet".to_string()),
         (_, Some(r)) => {
             let at = r.fetched_at.with_timezone(&Local).format("%H:%M");
+            let updated = if last_ok { format!("Updated {at}") } else { format!("As of {at}") };
             let full = if session.level == Level::Full {
                 Some(pill_text("Session", now, r.session.resets_at))
             } else if week.level == Level::Full {
@@ -133,13 +137,13 @@ pub fn build(
                 None
             };
             if full.is_some() {
-                (PillState::Full, full, format!("Updated {at}"))
+                (PillState::Full, full, updated)
             } else if session.level == Level::Alert || week.level == Level::Alert {
-                (PillState::Alert, None, format!("Updated {at}"))
+                (PillState::Alert, None, updated)
             } else if !last_ok {
-                (PillState::Stale, None, format!("As of {at}"))
+                (PillState::Stale, None, updated)
             } else {
-                (PillState::Normal, None, format!("Updated {at}"))
+                (PillState::Normal, None, updated)
             }
         }
     };
@@ -279,6 +283,34 @@ mod tests {
         assert_eq!(vm.week.value_text, "–");
         assert_eq!(vm.updated_text, "No reading yet");
         assert!(vm.announce.is_none() && !vm.refreshing);
+    }
+
+    fn session_value(used: f64) -> String {
+        let now = local(28, 10, 0);
+        let r = reading(used, 10.0, now);
+        build(Some(&r), true, &Source::Windows, &Settings::default(), now).session.value_text
+    }
+
+    #[test]
+    fn value_text_clamped() {
+        assert_eq!(session_value(150.0), "100%");
+        assert_eq!(session_value(-5.0), "0%");
+        assert_eq!(session_value(-0.4), "0%");
+    }
+
+    #[test]
+    fn value_text_never_100_below_full() {
+        assert_eq!(session_value(99.5), "99%");
+        assert_eq!(session_value(99.6), "99%");
+        assert_eq!(session_value(100.0), "100%");
+    }
+
+    #[test]
+    fn stale_text_even_when_alert() {
+        let now = local(28, 11, 0);
+        let r = reading(10.0, 95.0, now);
+        let vm = build(Some(&r), false, &Source::Windows, &Settings::default(), now);
+        assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Alert, "As of 10:51"));
     }
 
     #[test]
