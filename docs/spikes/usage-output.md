@@ -70,10 +70,10 @@ Roughly 5 to 5.6 s of that is `claude` itself starting up inside WSL (measured n
 
 ```
 wsl --shutdown
-Measure-Command { wsl.exe -d Ubuntu -- bash -lc "claude -p --output-format json /usage" < NUL }
+Measure-Command { cmd /c 'wsl.exe -d Ubuntu -- bash -lc "claude -p --output-format json /usage" < NUL' }
 ```
 
-Run the second line once right after the first, and add the number here.
+Run the second line once right after the first, and add the number here. (`cmd /c` is needed because PowerShell has no `<` input redirection.)
 
 ## Quota cost
 
