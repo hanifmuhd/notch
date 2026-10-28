@@ -3,3 +3,5 @@
 .hallmark/
 node_modules/
 target/
+src-tauri/target/
+src-tauri/gen/
