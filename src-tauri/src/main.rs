@@ -7,6 +7,7 @@ mod pace;
 mod placement;
 mod settings;
 mod source;
+mod tray;
 mod usage;
 mod view;
 
@@ -21,6 +22,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
+use tauri_plugin_notification::NotificationExt;
 use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize, State, WindowEvent};
 use view::ViewModel;
 
@@ -48,8 +50,15 @@ struct ScreenInfo {
     primary: bool,
 }
 
-/// Hook for Task 14 (toasts); events are already folded into `announce` by the caller.
-fn on_alert(_events: Vec<AlertEvent>) {}
+/// One toast per event (spec 5.5); shown even while the notch is hidden.
+fn on_alert(app: &AppHandle, events: Vec<AlertEvent>) {
+    for e in &events {
+        let (title, body) = view::toast_text(e, Local::now());
+        if let Err(err) = app.notification().builder().title(title).body(body).show() {
+            eprintln!("toast failed: {err}");
+        }
+    }
+}
 
 /// Titles of the events joined for screen readers, or None when there are none.
 fn announce(events: &[AlertEvent]) -> Option<String> {
@@ -63,6 +72,7 @@ fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
     #[cfg(debug_assertions)]
     eprintln!("usage-updated {}", serde_json::to_string(&vm).unwrap_or_default());
     let _ = app.emit("usage-updated", &vm);
+    tray::update(app, &vm);
     vm
 }
 
@@ -79,7 +89,7 @@ fn refresh(app: &AppHandle) {
         let result = catch_unwind(AssertUnwindSafe(|| app_state::fetch(&state, &SystemRunner))).ok().flatten();
         let events = state.finish_refresh(result);
         emit(app, announce(&events));
-        on_alert(events);
+        on_alert(app, events);
         if !state.take_refresh_again() || !state.try_start_refresh() {
             break;
         }
@@ -106,7 +116,7 @@ fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> 
     let (source_changed, events) = state.save_settings(settings).map_err(|e| e.to_string())?;
     replace(&app);
     let vm = emit(&app, announce(&events));
-    on_alert(events);
+    on_alert(&app, events);
     if source_changed {
         refresh_now(app);
     }
@@ -296,6 +306,8 @@ fn track_fullscreen(app: AppHandle) {
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .on_window_event(|window, event| {
             if let WindowEvent::ScaleFactorChanged { .. } = event {
                 let app = window.app_handle().clone();
@@ -316,6 +328,15 @@ fn main() {
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("settings.json");
             app.manage(AppState::new(settings::load(&path), path));
+            tray::build(app.handle())?;
+            #[cfg(debug_assertions)]
+            if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
+                let now = Local::now();
+                let sample = AlertEvent::Crossed(alerts::LimitKind::Session, 91.0, chrono::Utc::now() + chrono::Duration::minutes(90));
+                let (title, body) = view::toast_text(&sample, now);
+                let r = app.notification().builder().title(title).body(body).show();
+                eprintln!("test toast show() -> {r:?}");
+            }
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 refresh(&handle);

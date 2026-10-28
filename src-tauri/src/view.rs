@@ -78,6 +78,19 @@ pub fn toast_text(e: &AlertEvent, now: DateTime<Local>) -> (String, String) {
     }
 }
 
+/// Tray tooltip: the two numbers, or the app name when there is nothing to show.
+pub fn tray_tooltip(vm: &ViewModel) -> String {
+    match vm.pill {
+        PillState::NoClaude | PillState::NoData => "Claude Notch".into(),
+        _ => format!("Session {}, week {}", vm.session.value_text, vm.week.value_text),
+    }
+}
+
+/// Text of the tray's one show/hide item: it names the action a click will do.
+pub fn tray_toggle_label(show_notch: bool) -> &'static str {
+    if show_notch { "Hide notch" } else { "Show notch" }
+}
+
 fn pill_text(name: &str, now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
     match when_text(now, resets_at) {
         w if w == "now" || w.starts_with("in ") => format!("{name} full, back {w}"),
@@ -364,5 +377,21 @@ mod tests {
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::NoData, "No reading yet"));
         let r = reading(10.0, 10.0, now);
         assert_eq!(build(Some(&r), true, None, &Settings::default(), now).pill, PillState::Normal);
+    }
+
+    #[test]
+    fn tray_tooltip_shows_numbers_or_the_name() {
+        let now = local(28, 10, 0);
+        let r = reading(42.0, 68.0, now);
+        let build_with = |r: Option<&UsageReading>, src: Source| build(r, true, Some(&src), &Settings::default(), now);
+        assert_eq!(tray_tooltip(&build_with(Some(&r), Source::Windows)), "Session 42%, week 68%");
+        assert_eq!(tray_tooltip(&build_with(None, Source::Windows)), "Claude Notch");
+        assert_eq!(tray_tooltip(&build_with(None, Source::NotFound)), "Claude Notch");
+    }
+
+    #[test]
+    fn tray_toggle_label_names_the_next_action() {
+        assert_eq!(tray_toggle_label(true), "Hide notch");
+        assert_eq!(tray_toggle_label(false), "Show notch");
     }
 }

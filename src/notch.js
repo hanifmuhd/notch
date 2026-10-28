@@ -275,6 +275,11 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
     render(e.payload);
     if (e.payload.announce) announce(e.payload.announce);
   });
+  // The tray can change show_notch; take the file's settings so the next save does not undo it.
+  await listen('settings-changed', async () => {
+    settings = await call('get_settings') || settings;
+    renderSettings();
+  });
   // `wsl -l` can take seconds, so the distro list fills in afterwards.
   distros = (await call('list_distros')) || [];
   if (settings) renderSettings();
