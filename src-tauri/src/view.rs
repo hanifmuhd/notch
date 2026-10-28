@@ -121,10 +121,11 @@ fn empty_limit() -> LimitView {
     }
 }
 
+/// `source` is None while Claude has not been looked for yet; that is not "not installed".
 pub fn build(
     reading: Option<&UsageReading>,
     last_ok: bool,
-    source: &Source,
+    source: Option<&Source>,
     settings: &Settings,
     now: DateTime<Local>,
 ) -> ViewModel {
@@ -136,7 +137,7 @@ pub fn build(
         None => (empty_limit(), empty_limit()),
     };
     let (pill, pill_text, updated_text) = match (source, reading) {
-        (Source::NotFound, _) => (
+        (Some(Source::NotFound), _) => (
             PillState::NoClaude,
             None,
             "Install Claude Code to see your limits".to_string(),
@@ -218,7 +219,7 @@ mod tests {
         let now = local(28, 10, 0);
         let r = reading(10.0, 10.0, now);
         // 133 min left of 300 -> 55.67 % passed
-        let vm = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.session.pace_text, "56% of time passed");
         assert_eq!(vm.session.value_text, "10%");
     }
@@ -227,7 +228,7 @@ mod tests {
     fn runs_out_text() {
         let now = local(28, 10, 0);
         let r = reading(80.0, 10.0, now);
-        let vm = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         let t = runs_out_at(80.0, SESSION_WINDOW, utc(now), r.session.resets_at).unwrap();
         let want = format!("Runs out around {}", t.with_timezone(&Local).format("%H:%M"));
         assert_eq!(vm.session.runs_out_text, Some(want));
@@ -240,7 +241,7 @@ mod tests {
     fn runs_out_hidden_when_full() {
         let now = local(28, 10, 0);
         let r = reading(100.0, 10.0, now);
-        let vm = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.session.level, Level::Full);
         assert_eq!(vm.session.runs_out_text, None);
     }
@@ -249,10 +250,10 @@ mod tests {
     fn stale_state_and_text() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), false, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill, PillState::Stale);
         assert_eq!(vm.updated_text, "As of 10:51");
-        let ok = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let ok = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!((ok.pill, ok.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
@@ -260,10 +261,10 @@ mod tests {
     fn full_beats_alert_beats_stale() {
         let now = local(28, 11, 0);
         let r = reading(100.0, 95.0, now);
-        let vm = build(Some(&r), false, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill, PillState::Full);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill, PillState::Alert);
     }
 
@@ -272,7 +273,7 @@ mod tests {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 100.0, now);
         r.session.resets_at = utc(now) + Duration::minutes(80);
-        let vm = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill_text.as_deref(), Some("Session full, back in 1h 20m"));
     }
 
@@ -280,20 +281,20 @@ mod tests {
     fn pill_text_full_week() {
         let now = local(28, 10, 51);
         let r = reading(10.0, 100.0, now);
-        let vm = build(Some(&r), true, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill_text.as_deref(), Some("Week full, back in Fri 09:00"));
     }
 
     #[test]
     fn no_claude() {
-        let vm = build(None, true, &Source::NotFound, &Settings::default(), local(28, 10, 0));
+        let vm = build(None, true, Some(&Source::NotFound), &Settings::default(), local(28, 10, 0));
         assert_eq!(vm.pill, PillState::NoClaude);
         assert_eq!(vm.updated_text, "Install Claude Code to see your limits");
     }
 
     #[test]
     fn no_data() {
-        let vm = build(None, true, &Source::Windows, &Settings::default(), local(28, 10, 0));
+        let vm = build(None, true, Some(&Source::Windows), &Settings::default(), local(28, 10, 0));
         assert_eq!(vm.pill, PillState::NoData);
         assert_eq!(vm.session.value_text, "–");
         assert_eq!(vm.week.value_text, "–");
@@ -304,7 +305,7 @@ mod tests {
     fn session_value(used: f64) -> String {
         let now = local(28, 10, 0);
         let r = reading(used, 10.0, now);
-        build(Some(&r), true, &Source::Windows, &Settings::default(), now).session.value_text
+        build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now).session.value_text
     }
 
     #[test]
@@ -325,7 +326,7 @@ mod tests {
     fn stale_text_even_when_alert() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, &Source::Windows, &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Alert, "As of 10:51"));
     }
 
@@ -354,5 +355,14 @@ mod tests {
             toast_text(&AlertEvent::Full(LimitKind::Session, utc(now) - Duration::minutes(1)), now).1,
             "Back now"
         );
+    }
+
+    #[test]
+    fn undetected_source_is_not_no_claude() {
+        let now = local(28, 10, 0);
+        let vm = build(None, true, None, &Settings::default(), now);
+        assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::NoData, "No reading yet"));
+        let r = reading(10.0, 10.0, now);
+        assert_eq!(build(Some(&r), true, None, &Settings::default(), now).pill, PillState::Normal);
     }
 }

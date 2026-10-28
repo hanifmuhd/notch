@@ -111,20 +111,33 @@ fn wsl_has_claude(runner: &dyn Runner, distro: &str) -> bool {
         .is_ok()
 }
 
-pub fn detect(runner: &dyn Runner, pref: &SourcePref) -> Source {
+/// Looks for Claude. With `start_wsl` off it must not boot a stopped distro, so it only probes
+/// distros that are already running; finding nothing then returns None (try again later),
+/// never NotFound.
+pub fn detect_with(runner: &dyn Runner, pref: &SourcePref, start_wsl: bool) -> Option<Source> {
     match pref {
-        SourcePref::Windows => return Source::Windows,
-        SourcePref::Wsl { distro } => return Source::Wsl { distro: distro.clone() },
+        SourcePref::Windows => return Some(Source::Windows),
+        SourcePref::Wsl { distro } => return Some(Source::Wsl { distro: distro.clone() }),
         SourcePref::Auto => {}
     }
     if runner.run("where.exe", &["claude"], PROBE_TIMEOUT).is_ok() {
-        return Source::Windows;
+        return Some(Source::Windows);
     }
-    let Ok(list) = runner.run("wsl.exe", &["-l", "-q"], PROBE_TIMEOUT) else {
-        return Source::NotFound;
-    };
-    let found = lines(&list).find(|d| wsl_has_claude(runner, d));
-    found.map_or(Source::NotFound, |d| Source::Wsl { distro: d.to_string() })
+    let list_args: &[&str] = if start_wsl { &["-l", "-q"] } else { &["-l", "--running", "-q"] };
+    let found = runner
+        .run("wsl.exe", list_args, PROBE_TIMEOUT)
+        .ok()
+        .and_then(|list| lines(&list).find(|d| wsl_has_claude(runner, d)).map(String::from));
+    match found {
+        Some(distro) => Some(Source::Wsl { distro }),
+        None if start_wsl => Some(Source::NotFound),
+        None => None,
+    }
+}
+
+#[cfg(test)]
+fn detect(runner: &dyn Runner, pref: &SourcePref) -> Source {
+    detect_with(runner, pref, true).unwrap_or(Source::NotFound)
 }
 
 /// Program and arguments that print the usage JSON. `NotFound` has none to run.
@@ -300,5 +313,21 @@ mod tests {
         );
         assert_eq!(r, Err(RunError::Timeout));
         assert!(start.elapsed() < Duration::from_millis(2500));
+    }
+
+    #[test]
+    fn start_wsl_off_probes_only_running_distros() {
+        let r = FakeRunner::new(&[
+            ("where.exe claude", fail()),
+            ("wsl.exe -l --running -q", Ok("Ubuntu\r\n".into())),
+            ("wsl.exe -d Ubuntu -- bash -lc command -v claude", Ok("/x/claude\n".into())),
+        ]);
+        assert_eq!(
+            detect_with(&r, &SourcePref::Auto, false),
+            Some(Source::Wsl { distro: "Ubuntu".into() })
+        );
+        let r = FakeRunner::new(&[("where.exe claude", fail()), ("wsl.exe -l --running -q", Ok(String::new()))]);
+        assert_eq!(detect_with(&r, &SourcePref::Auto, false), None);
+        assert!(r.calls.borrow().iter().all(|c| !c.contains(" -d ") && !c.contains("-l -q")));
     }
 }

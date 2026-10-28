@@ -10,14 +10,13 @@ mod view;
 
 use alerts::AlertEvent;
 use app_state::AppState;
-use chrono::{Local, Utc};
+use chrono::Local;
 use serde::Serialize;
 use settings::Settings;
-use source::{detect, usage_command, wsl_running, Runner, Source, SystemRunner, CLI_TIMEOUT};
+use source::SystemRunner;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, LogicalSize, Manager, PhysicalPosition, State};
-use usage::{parse_usage, UsageReading};
 use view::ViewModel;
 
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
@@ -49,42 +48,24 @@ fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
     vm
 }
 
-/// Runs the CLI (blocking, 6-9 s on WSL). None means the call failed and the reading is stale.
-fn fetch(state: &AppState) -> Option<UsageReading> {
-    let runner = SystemRunner;
-    let settings = state.settings();
-    let mut source = state.source();
-    // NotFound is never cached: Claude may have been installed since the last tick.
-    if source == Source::NotFound {
-        source = detect(&runner, &settings.source);
-        state.set_source(source.clone());
-    }
-    if let Source::Wsl { distro } = &source {
-        if !settings.start_wsl && !wsl_running(&runner, distro) {
-            return None;
-        }
-    }
-    if source == Source::NotFound {
-        return None;
-    }
-    let (program, args) = usage_command(&source);
-    let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let raw = runner.run(&program, &args, CLI_TIMEOUT).ok()?;
-    parse_usage(&raw, Utc::now()).ok()
-}
-
-/// One refresh cycle; ignored while another is running.
+/// One refresh cycle; ignored while another is running. Runs again once if a source change
+/// arrived meanwhile.
 fn refresh(app: &AppHandle) {
     let state = app.state::<AppState>();
     if !state.try_start_refresh() {
         return;
     }
-    emit(app, None);
-    // A panic must still release the in-flight slot.
-    let result = catch_unwind(AssertUnwindSafe(|| fetch(&state))).ok().flatten();
-    let events = state.finish_refresh(result);
-    emit(app, announce(&events));
-    on_alert(events);
+    loop {
+        emit(app, None);
+        // A panic must still release the in-flight slot.
+        let result = catch_unwind(AssertUnwindSafe(|| app_state::fetch(&state, &SystemRunner))).ok().flatten();
+        let events = state.finish_refresh(result);
+        emit(app, announce(&events));
+        on_alert(events);
+        if !state.take_refresh_again() || !state.try_start_refresh() {
+            break;
+        }
+    }
 }
 
 #[tauri::command]
