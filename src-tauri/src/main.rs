@@ -5,6 +5,8 @@ mod alerts;
 #[allow(dead_code)]
 mod pace;
 #[allow(dead_code)]
+mod settings;
+#[allow(dead_code)]
 mod usage;
 
 fn main() {
