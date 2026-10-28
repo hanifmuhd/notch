@@ -3,6 +3,7 @@
 use crate::settings::SourcePref;
 use std::io::Read;
 use std::process::{Command, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -44,13 +45,15 @@ impl Runner for SystemRunner {
         let mut child = cmd.spawn().map_err(|e| RunError::Spawn(e.to_string()))?;
         // Read both pipes on their own threads so a full pipe buffer cannot stall the child.
         let drain = |pipe: Option<Box<dyn Read + Send>>| {
+            let (tx, rx) = mpsc::channel();
             thread::spawn(move || {
                 let mut buf = Vec::new();
                 if let Some(mut p) = pipe {
                     let _ = p.read_to_end(&mut buf);
                 }
-                buf
-            })
+                let _ = tx.send(buf);
+            });
+            rx
         };
         let out = drain(child.stdout.take().map(|p| Box::new(p) as _));
         let err = drain(child.stderr.take().map(|p| Box::new(p) as _));
@@ -69,8 +72,11 @@ impl Runner for SystemRunner {
                 Err(e) => return Err(RunError::Spawn(e.to_string())),
             }
         };
-        let out = out.join().unwrap_or_default();
-        let err = err.join().unwrap_or_default();
+        // A descendant that inherited the pipe can keep it open after the child exits, so the
+        // reads share the same deadline. Stdout missing in time is a timeout; stderr is optional.
+        let left = |d: Instant| d.saturating_duration_since(Instant::now());
+        let out = out.recv_timeout(left(deadline)).map_err(|_| RunError::Timeout)?;
+        let err = err.recv_timeout(left(deadline)).unwrap_or_default();
         if status.success() {
             Ok(decode_output(&out))
         } else {
@@ -100,7 +106,8 @@ fn lines(out: &str) -> impl Iterator<Item = &str> {
 
 fn wsl_has_claude(runner: &dyn Runner, distro: &str) -> bool {
     runner
-        .run("wsl.exe", &["-d", distro, "--", "bash", "-lc", "command -v claude"], PROBE_TIMEOUT)
+        // Probing a stopped distro boots it, so give it the full CLI timeout.
+        .run("wsl.exe", &["-d", distro, "--", "bash", "-lc", "command -v claude"], CLI_TIMEOUT)
         .is_ok()
 }
 
@@ -271,6 +278,24 @@ mod tests {
         let r = SystemRunner.run(
             "powershell",
             &["-NoProfile", "-Command", "Start-Sleep 5"],
+            Duration::from_secs(1),
+        );
+        assert_eq!(r, Err(RunError::Timeout));
+        assert!(start.elapsed() < Duration::from_millis(2500));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn exited_child_with_held_pipe_times_out() {
+        // The parent exits at once; its child inherits the stdout pipe and sleeps.
+        let start = std::time::Instant::now();
+        let r = SystemRunner.run(
+            "powershell",
+            &[
+                "-NoProfile",
+                "-Command",
+                "Start-Process -NoNewWindow powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 5'; exit 0",
+            ],
             Duration::from_secs(1),
         );
         assert_eq!(r, Err(RunError::Timeout));
