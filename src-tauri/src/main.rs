@@ -296,6 +296,9 @@ fn track_fullscreen(app: AppHandle) {
         let hwnd = app.get_webview_window("notch").and_then(|w| w.hwnd().ok());
         if let (Some(device), Some(hwnd)) = (device, hwnd) {
             let single = app.available_monitors().is_ok_and(|m| m.len() == 1);
+    SHOWN.store(want, Ordering::Relaxed);
+    #[cfg(all(debug_assertions, windows))]
+    eprintln!("notch visible={want} show_notch={show_notch} fullscreen={fullscreen} foreground_class={}", fullscreen::foreground_class());
             let full = fullscreen::foreground_fullscreen_on(&device, hwnd.0 as isize)
                 || (single && fullscreen::quns_d3d_fullscreen());
             FULLSCREEN.store(full, Ordering::Relaxed);
