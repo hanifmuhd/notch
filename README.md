@@ -25,6 +25,7 @@ If Claude Code is not found, the notch says so and links to the install page. It
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
 - With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The notch shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
 - A session that is working shows as a small pod beside the notch with how long it has been running. It turns amber with a bell when it needs you, and a soft amber glow breathes around the notch until you answer. A session that stops sending news (Esc, a crash, a closed terminal) disappears after 10 minutes.
+- With **Prayer times** on, the panel shows the next prayer for your JAKIM zone, its time and how long until it, a line since the previous prayer, and today's five times (Subuh, Zohor, Asar, Maghrib, Isyak). At each prayer time the notch shows a moon with "Maghrib · It's time to pray · 18:58" for a minute, and before it "Maghrib in 10 min · 18:58" for 20 seconds; each also gives a Windows notification. If the times cannot be downloaded, the panel says "Prayer times unavailable — will retry" and nothing alerts.
 
 ## Settings
 
@@ -38,6 +39,7 @@ Changes are saved as you make them.
 - **Start WSL if it's stopped**: only for a WSL source. When off, the notch will not start WSL and shows old numbers instead.
 - **Show when Claude needs you** (Task alerts): adds the notch's own hooks to Claude Code's `settings.json` for the install it reads usage from, and removes them when you turn it off. Your other hooks stay as they are, and the first change keeps a copy as `settings.json.notch-backup`. It is greyed out until Claude Code is found, or while WSL is stopped and "Start WSL" is off.
 - **Also when a task finishes**: on by default. Off means only "needs you" alerts.
+- **Prayer times**: off by default. **Zone** is your JAKIM zone (default WLY01, Kuala Lumpur and Putrajaya). **Remind before**: Off, 5, 10 (default) or 15 minutes. Zone and Remind before show while Prayer times is on.
 - **Session alert at** and **Week alert at**: the percentage that triggers an amber warning and one Windows notification, from 50 to 99. At 100 percent it always alerts as full.
 
 ## Tray menu
@@ -56,6 +58,8 @@ Never reads your Claude login; only runs `claude /usage`.
 The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format json /usage` (inside WSL when needed), reads the percentages and reset times from the answer, and keeps them on your PC. It does not open your Claude credentials file and does not contact claude.ai or api.anthropic.com itself.
 
 Task alerts use Claude Code's own hooks. Each hook copies the whole event Claude Code hands it into a file in the app's folder on your PC. That copy can include your prompt, Claude's last reply, or the command or file it asked permission for. The app reads each file and deletes it within about a second; files written while the app is closed are deleted at its next start (after a day at most). Nothing is sent anywhere.
+
+Prayer times, when on, download the month's times for your zone from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, about once a month and when you change zone. Only the zone code is sent. The times are kept beside the settings file.
 
 ## Uninstall
 
@@ -139,3 +143,11 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 34. [ ] Choose Show in: Taskbar. The capsule sits just left of the tray and opens upward. Open many apps until the taskbar is crowded: it shrinks to the rings, then moves to the top when there is no room; close apps and it comes back.
 35. [ ] In Taskbar mode, click an empty part of the taskbar. The capsule stays visible.
 36. [ ] In Top mode, turn on Stay behind windows and maximise a window. The window covers the notch; turn it off and the notch is on top again.
+
+### Prayer times (v1.3)
+
+37. [ ] Turn on Prayer times with zone WLY01. The panel shows "Prayer · Kuala Lumpur, Putrajaya" and today's five times match e-solat.gov.my for that zone.
+38. [ ] Wait for a reminder (or a prayer time) with the notch closed. The notch shows the moon and the banner line, and one Windows notification arrives. Quit and restart within the minute: no second notification.
+39. [ ] Choose Show in: Taskbar and wait for the next alert. The capsule shows the short form, for example "Maghrib · 18:58", without cutting it off.
+40. [ ] Change the zone. The panel's place and times change to the new zone.
+41. [ ] Turn off Wi-Fi, delete the `prayer-*.json` files in the app's folder and restart. The panel says "Prayer times unavailable — will retry"; turn Wi-Fi back on and the times appear within an hour.
