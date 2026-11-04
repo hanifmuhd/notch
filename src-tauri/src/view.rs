@@ -41,6 +41,8 @@ pub struct ViewModel {
     pub updated_text: String,
     pub announce: Option<String>,
     pub refreshing: bool,
+    /// Line the pill shows for a few seconds; only set on the emit that carries a new session notice.
+    pub flash: Option<String>,
 }
 
 /// A reading older than this counts as stale even if the last refresh worked (e.g. after sleep).
@@ -189,7 +191,7 @@ pub fn build(
             }
         }
     };
-    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false }
+    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None }
 }
 
 #[cfg(test)]

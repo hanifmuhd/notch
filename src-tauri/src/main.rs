@@ -2,6 +2,7 @@
 
 mod alerts;
 mod app_state;
+mod events;
 mod fullscreen;
 mod hooks;
 mod monitors;
@@ -34,6 +35,7 @@ const REFRESH_CHECK: Duration = Duration::from_secs(15);
 const CLOSED_SIZE: (f64, f64) = (220.0, 36.0);
 const OPEN_WIDTH: f64 = 320.0;
 const MONITOR_POLL: Duration = Duration::from_secs(2);
+const EVENTS_POLL: Duration = Duration::from_secs(1);
 
 /// Last logical size placed, so a display change can re-place the window without the webview.
 /// Held for the whole of `place_window`, and `place_window` only runs on the main thread, so a
@@ -56,13 +58,18 @@ struct ScreenInfo {
     primary: bool,
 }
 
-/// One toast per event (spec 5.5); shown even while the notch is hidden.
+/// Shown even while the notch is hidden.
+fn toast(app: &AppHandle, title: String, body: String) {
+    if let Err(err) = app.notification().builder().title(title).body(body).show() {
+        eprintln!("toast failed: {err}");
+    }
+}
+
+/// One toast per event (spec 5.5).
 fn on_alert(app: &AppHandle, events: Vec<AlertEvent>) {
     for e in &events {
         let (title, body) = view::toast_text(e, Local::now());
-        if let Err(err) = app.notification().builder().title(title).body(body).show() {
-            eprintln!("toast failed: {err}");
-        }
+        toast(app, title, body);
     }
 }
 
@@ -74,7 +81,13 @@ fn announce(events: &[AlertEvent]) -> Option<String> {
 }
 
 fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
-    let vm = app.state::<AppState>().view(Local::now(), announce);
+    emit_flash(app, announce, None)
+}
+
+/// `flash` is set only on the emit that carries a new session notice (spec 5.3).
+fn emit_flash(app: &AppHandle, announce: Option<String>, flash: Option<String>) -> ViewModel {
+    let mut vm = app.state::<AppState>().view(Local::now(), announce);
+    vm.flash = flash;
     #[cfg(debug_assertions)]
     eprintln!("usage-updated {}", serde_json::to_string(&vm).unwrap_or_default());
     let _ = app.emit("usage-updated", &vm);
@@ -173,6 +186,34 @@ async fn set_task_alerts(app: AppHandle, on: bool) -> Result<hooks::TaskAlerts, 
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// The panel was opened and closed again: finished sessions are seen (spec 5.2).
+#[tauri::command]
+fn sessions_seen(app: AppHandle, state: State<AppState>) -> ViewModel {
+    state.sessions_seen();
+    emit(&app, None)
+}
+
+/// Every second reads new hook event files into the session list (spec 5.2), then emits and
+/// toasts with no state lock held. `started` is the app start, for the stale-file rules.
+fn track_events(app: AppHandle, started: DateTime<Utc>) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(EVENTS_POLL);
+        let state = app.state::<AppState>();
+        let now = Utc::now();
+        let taken = events::take_files(&state.events_dir(), started, now);
+        let read_any = !taken.is_empty();
+        let notices = state.apply_events(taken);
+        if state.expire_sessions(now) || read_any {
+            let flashes: Vec<&str> = notices.iter().map(|n| n.flash.as_str()).collect();
+            let announce = (!flashes.is_empty()).then(|| flashes.join(". "));
+            emit_flash(&app, announce, flashes.last().map(|f| f.to_string()));
+        }
+        for n in notices {
+            toast(&app, n.title, n.body);
+        }
+    });
 }
 
 #[tauri::command]
@@ -379,15 +420,18 @@ fn main() {
             list_distros,
             open_install_page,
             get_task_alerts,
-            set_task_alerts
+            set_task_alerts,
+            sessions_seen
         ])
         .setup(|app| {
+            let started = Utc::now();
             let path = app.path().app_config_dir()?.join("settings.json");
             app.manage(AppState::new(settings::load(&path), path));
             // The hooks only write into an existing folder, so it must exist before they fire.
             if let Err(e) = std::fs::create_dir_all(app.state::<AppState>().events_dir()) {
                 eprintln!("hooks: events folder: {e}");
             }
+            track_events(app.handle().clone(), started);
             tray::build(app.handle())?;
             apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
             #[cfg(debug_assertions)]

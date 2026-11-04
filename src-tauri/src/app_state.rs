@@ -2,6 +2,7 @@
 //! single-flight flag. Pure logic only, so it is testable without Tauri.
 
 use crate::alerts::{self, evaluate, AlertEvent, AlertState, Thresholds};
+use crate::events::{HookEvent, Notice, Sessions};
 use crate::settings::{self, Settings, SourcePref};
 use crate::source::{detect_with, usage_command, wsl_running, RunError, Runner, Source, CLI_TIMEOUT};
 use crate::usage::{looks_logged_out, parse_usage, UsageError, UsageReading};
@@ -27,6 +28,8 @@ struct Inner {
     refresh_again: bool,
     /// Last window (HWND as isize) that had focus before the notch; 0 = none.
     prev_foreground: isize,
+    /// Claude Code sessions that need you or finished (spec 5.2), from the hook events.
+    sessions: Sessions,
 }
 
 pub struct AppState(Mutex<Inner>);
@@ -48,6 +51,7 @@ impl AppState {
             in_flight: false,
             refresh_again: false,
             prev_foreground: 0,
+            sessions: Sessions::default(),
         }))
     }
 
@@ -131,6 +135,23 @@ impl AppState {
     /// Where the hooks drop event files: `events` beside settings.json.
     pub fn events_dir(&self) -> PathBuf {
         self.lock().settings_path.with_file_name("events")
+    }
+
+    /// Applies hook events as `events::take_files` returns them; returns the toasts to show.
+    pub fn apply_events(&self, events: Vec<(HookEvent, DateTime<Utc>, bool)>) -> Vec<Notice> {
+        let mut s = self.lock();
+        let finished_on = s.settings.task_finished;
+        events.into_iter().filter_map(|(e, at, quiet)| s.sessions.apply(e, at, quiet, finished_on)).collect()
+    }
+
+    /// Clears finished sessions older than 30 min; true if any went.
+    pub fn expire_sessions(&self, now: DateTime<Utc>) -> bool {
+        self.lock().sessions.expire(now)
+    }
+
+    /// The panel was opened and closed again.
+    pub fn sessions_seen(&self) {
+        self.lock().sessions.seen()
     }
 
     pub fn prev_foreground(&self) -> isize {
@@ -257,6 +278,19 @@ mod tests {
             week: Limit { used_pct: 10.0, resets_at: Some(now + Duration::days(3)) },
             fetched_at: now,
         }
+    }
+
+    #[test]
+    fn session_events_follow_the_task_finished_switch() {
+        use crate::events::{HookEvent, Kind};
+        let stop = || vec![(HookEvent { session_id: "a".into(), project: "own".into(), kind: Kind::Finished }, Utc::now(), false)];
+        let off = test_state(Settings { task_finished: false, ..Settings::default() });
+        assert!(off.apply_events(stop()).is_empty());
+        let on = state();
+        assert_eq!(on.apply_events(stop()).len(), 1);
+        assert!(!on.expire_sessions(Utc::now()));
+        on.sessions_seen();
+        assert!(on.lock().sessions.rows().is_empty());
     }
 
     #[test]
