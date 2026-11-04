@@ -21,15 +21,19 @@ If Claude Code is not found, the notch says so and links to the install page. It
 - The panel shows a bar for the session and the week, when each resets, and a blue tick for how much of that time has passed. If the fill is past the tick, you are using Claude faster than the clock, and it says when you would run out.
 - The gear opens settings. The refresh button updates now; it also updates by itself every 5 minutes.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
+- If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
+- With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The pill shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
 
 ## Settings
 
 Changes are saved as you make them.
 
-- **Show on**: which screen the notch sits on. If that screen is unplugged, it moves to your main screen.
+- **Show on**: which screen the notch sits on, by the monitor's own name. If that screen is unplugged, it moves to your main screen.
 - **Position**: left, centre or right. Right leaves room for the window buttons.
 - **Get usage from**: Auto looks on Windows first, then in each WSL distro. Or pick Windows, or one WSL distro.
 - **Start WSL if it's stopped**: only for a WSL source. When off, the notch will not start WSL and shows old numbers instead.
+- **Show when Claude needs you** (Task alerts): adds the notch's own hooks to Claude Code's `settings.json` for the install it reads usage from, and removes them when you turn it off. Your other hooks stay as they are, and the first change keeps a copy as `settings.json.notch-backup`. It is greyed out until Claude Code is found, or while WSL is stopped and "Start WSL" is off.
+- **Also when a task finishes**: on by default. Off means only "needs you" alerts.
 - **Session alert at** and **Week alert at**: the percentage that triggers an amber warning and one Windows notification, from 50 to 99. At 100 percent it always alerts as full.
 
 ## Tray menu
@@ -45,7 +49,13 @@ Right-click the tray icon. Its tooltip shows the current numbers.
 
 Never reads your Claude login; only runs `claude /usage`.
 
-The app runs `claude -p --output-format json /usage` (inside WSL when needed), reads the percentages and reset times from the answer, and keeps them on your PC. It does not open your Claude credentials file and does not contact claude.ai or api.anthropic.com itself.
+The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format json /usage` (inside WSL when needed), reads the percentages and reset times from the answer, and keeps them on your PC. It does not open your Claude credentials file and does not contact claude.ai or api.anthropic.com itself.
+
+Task alerts use Claude Code's own hooks. Each hook copies the event Claude Code hands it (session id, project folder, event name, message) into a file in the app's folder on your PC, which the app reads and deletes. Nothing is sent anywhere.
+
+## Uninstall
+
+Turn **Show when Claude needs you** off first, so Claude Code's `settings.json` no longer lists the notch's hooks. If you forget, the hooks do nothing once the app's folder is gone, and you can remove the lines containing `claude-notch` by hand.
 
 ## Build from source
 
@@ -103,3 +113,16 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 ### Idle session
 
 20. [ ] After at least 5 hours with no Claude Code use (for example first thing in the morning), run the `/usage` command from step 7 once and save the output. If the session line has no `resets …` part, tell Claude so the parser can accept it.
+
+### Task alerts and follow-ups (v1.1)
+
+21. [ ] Turn on **Show when Claude needs you**. Claude Code's `settings.json` now has five entries containing `claude-notch`, your other hooks are unchanged, and `settings.json.notch-backup` exists.
+22. [ ] In a WSL terminal, ask Claude something that needs permission (for example to create a file). You get a "Claude needs you" notification, the pill shows "<project> needs you" for a few seconds, then a bell with 1.
+23. [ ] Ask something that takes over a minute. When it finishes you get "Claude finished". A quick reply only adds a quiet row in the panel.
+24. [ ] Open and close the panel. Finished rows are gone; "needs you" rows stay until you answer in that terminal.
+25. [ ] The 5-minute usage refresh never adds a "finished" row.
+26. [ ] Turn the switch off. The `claude-notch` entries are gone and the rest of the file is unchanged.
+27. [ ] Lower a threshold below your usage (one notification), then quit and restart the app. No second notification.
+28. [ ] **Show on** lists your monitor by name (for example "MSI MP252 (main)").
+29. [ ] If you have Claude Code on Windows (not WSL), choose it as the source and check the numbers still load. This checks the Windows command quoting, which could not be tested here.
+30. [ ] Log out of Claude Code, refresh. The notch says "Log in to Claude Code" and hides the numbers. Log back in.
