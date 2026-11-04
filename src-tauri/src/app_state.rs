@@ -89,6 +89,7 @@ impl AppState {
         vm.refreshing = s.in_flight;
         vm.sessions = s.sessions.rows();
         vm.attention = s.sessions.attention();
+        vm.pod = s.sessions.pod();
         vm
     }
 
@@ -527,5 +528,6 @@ mod tests {
         assert_eq!(vm.sessions[0].status, "finished"); // newest first
         assert_eq!(vm.sessions[1].status, "needs_you");
         assert_eq!(vm.flash, None);
+        assert_eq!(vm.pod.map(|p| p.status), Some("needs_you"));
     }
 }

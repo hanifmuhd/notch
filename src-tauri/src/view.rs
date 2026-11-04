@@ -2,7 +2,7 @@
 //! All display times are local; pace maths runs in UTC.
 
 use crate::alerts::{level, AlertEvent, Level, LimitKind};
-use crate::events::SessionRow;
+use crate::events::{Pod, SessionRow};
 use crate::pace::{elapsed_pct, runs_out_at, SESSION_WINDOW, WEEK_WINDOW};
 use crate::settings::Settings;
 use crate::source::Source;
@@ -51,6 +51,8 @@ pub struct ViewModel {
     /// Sessions that need you or finished, newest first (max 5); filled by `AppState::view`.
     pub sessions: Vec<SessionRow>,
     pub attention: usize,
+    /// The session shown in the pod beside the notch (working or needs you).
+    pub pod: Option<Pod>,
 }
 
 /// A reading older than this counts as stale even if the last refresh worked (e.g. after sleep).
@@ -230,7 +232,7 @@ pub fn build(
             }
         }
     };
-    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0 }
+    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0, pod: None }
 }
 
 #[cfg(test)]

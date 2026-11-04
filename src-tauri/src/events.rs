@@ -13,6 +13,8 @@ pub enum Kind {
     Finished,
     Prompt,
     End,
+    /// `PostToolUse`: the session is still alive (shows no text).
+    Heartbeat,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,6 +38,18 @@ pub struct SessionRow {
     pub since_ms: i64,
 }
 
+/// The session the pod shows: needs you first, else the newest working one (spec 5.4).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Pod {
+    pub project: String,
+    pub status: &'static str,
+    pub since_ms: i64,
+    /// Other sessions that are working or need you.
+    pub more: usize,
+}
+
+/// A working entry with no event for this long is dropped (Esc, crash, closed terminal).
+const WORKING_FOR: Duration = Duration::minutes(10);
 /// A finished entry clears itself after this (spec 5.2).
 const FINISHED_FOR: Duration = Duration::minutes(30);
 /// A reply at least this long toasts when it finishes (spec 5.2).
@@ -49,7 +63,18 @@ const MAX_ROWS: usize = 5;
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Status {
     NeedsYou,
+    Working,
     Finished,
+}
+
+impl Status {
+    fn name(self) -> &'static str {
+        match self {
+            Status::NeedsYou => "needs_you",
+            Status::Working => "working",
+            Status::Finished => "finished",
+        }
+    }
 }
 
 struct Entry {
@@ -57,6 +82,8 @@ struct Entry {
     project: String,
     status: Status,
     since: DateTime<Utc>,
+    /// Seen-time of the session's latest event, for the working timeout.
+    last: DateTime<Utc>,
 }
 
 /// In memory only; a restart starts empty.
@@ -84,6 +111,7 @@ pub fn parse_event(json: &str) -> Option<HookEvent> {
         "Stop" => Kind::Finished,
         "UserPromptSubmit" => Kind::Prompt,
         "SessionEnd" => Kind::End,
+        "PostToolUse" => Kind::Heartbeat,
         _ => return None,
     };
     Some(HookEvent { session_id, project, kind })
@@ -98,6 +126,17 @@ impl Sessions {
         let waiting = self.entries.iter().any(|x| x.session_id == id && x.status == Status::NeedsYou);
         if waiting && matches!(e.kind, Kind::NeedsYou(_)) {
             return None; // already waiting on you: no second toast, keeps its age
+        }
+        if e.kind == Kind::Heartbeat {
+            // Still alive: an answered prompt goes back to working; finished stays finished.
+            if let Some(x) = self.entries.iter_mut().find(|x| x.session_id == id && x.status != Status::Finished) {
+                if x.status == Status::NeedsYou {
+                    x.status = Status::Working;
+                    x.since = seen;
+                }
+                x.last = seen;
+            }
+            return None;
         }
         // Every other event replaces the session's entry (a Stop also ends a needs-you).
         self.entries.retain(|x| x.session_id != id);
@@ -115,15 +154,16 @@ impl Sessions {
             }
             Kind::Finished => return None, // "Also when a task finishes" is off
             Kind::Prompt => {
-                self.prompts.insert(id, at);
-                return None;
+                self.prompts.insert(id.clone(), at);
+                (Status::Working, None)
             }
             Kind::End => {
                 self.prompts.remove(&id);
                 return None;
             }
+            Kind::Heartbeat => return None, // handled above
         };
-        self.entries.push(Entry { session_id: id, project: p, status, since: seen });
+        self.entries.push(Entry { session_id: id, project: p, status, since: seen, last: seen });
         notice.filter(|_| !quiet)
     }
 
@@ -135,7 +175,11 @@ impl Sessions {
     /// Drops finished entries older than 30 min; true if any went.
     pub fn expire(&mut self, now: DateTime<Utc>) -> bool {
         let before = self.entries.len();
-        self.entries.retain(|x| x.status != Status::Finished || now - x.since < FINISHED_FOR);
+        self.entries.retain(|x| match x.status {
+            Status::Finished => now - x.since < FINISHED_FOR,
+            Status::Working => now - x.last < WORKING_FOR,
+            Status::NeedsYou => true,
+        });
         // Sessions that never sent SessionEnd must not grow this map forever (rough: mixes clocks).
         self.prompts.retain(|_, t| now - *t < MAX_FILE_AGE);
         self.entries.len() != before
@@ -150,18 +194,30 @@ impl Sessions {
             .take(MAX_ROWS)
             .map(|x| SessionRow {
                 project: x.project.clone(),
-                status: match x.status {
-                    Status::NeedsYou => "needs_you",
-                    Status::Finished => "finished",
-                },
+                status: x.status.name(),
                 since_ms: x.since.timestamp_millis(),
             })
             .collect()
     }
 
-    /// Every entry counts, including ones past the 5 shown.
+    /// Entries that need a look (needs you or finished), including ones past the 5 shown.
     pub fn attention(&self) -> usize {
-        self.entries.len()
+        self.entries.iter().filter(|x| x.status != Status::Working).count()
+    }
+
+    pub fn pod(&self) -> Option<Pod> {
+        let active: Vec<&Entry> = self.entries.iter().filter(|x| x.status != Status::Finished).collect();
+        let pick = active
+            .iter()
+            .rev()
+            .find(|x| x.status == Status::NeedsYou)
+            .or_else(|| active.last())?;
+        Some(Pod {
+            project: pick.project.clone(),
+            status: pick.status.name(),
+            since_ms: pick.since.timestamp_millis(),
+            more: active.len() - 1,
+        })
     }
 }
 
@@ -230,6 +286,7 @@ mod tests {
         assert_eq!(k("UserPromptSubmit"), Some(Kind::Prompt));
         assert_eq!(k("SessionEnd"), Some(Kind::End));
         assert_eq!(k("PreToolUse"), None);
+        assert_eq!(k("PostToolUse"), Some(Kind::Heartbeat));
         assert_eq!(parse_event(r#"{"session_id":"s","cwd":"/a/b/","hook_event_name":"Stop"}"#).unwrap().project, "b");
     }
 
@@ -274,7 +331,7 @@ mod tests {
         let mut s = Sessions::default();
         s.apply(ev("a", needs()), t, t, false, true);
         s.apply(ev("a", Kind::Prompt), t, t, false, true);
-        assert!(s.rows().is_empty());
+        assert_eq!(s.rows()[0].status, "working"); // answering in the terminal sets it working
         s.apply(ev("a", Kind::Finished), t, t, false, true);
         s.apply(ev("a", Kind::End), t, t, false, true);
         assert!(s.rows().is_empty());
@@ -442,5 +499,77 @@ mod tests {
         drop(lock);
         assert_eq!(ids(&take_files(&d.0, false, Utc::now())), vec![("a", false)]);
         assert!(take_files(&d.0, false, Utc::now()).is_empty());
+    }
+
+    #[test]
+    fn prompt_makes_working() {
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        assert_eq!(s.apply(ev("a", Kind::Prompt), t, t, false, true), None);
+        assert_eq!(s.rows()[0].status, "working");
+        let pod = s.pod().unwrap();
+        assert_eq!((pod.status, pod.project.as_str(), pod.more), ("working", "own", 0));
+        assert_eq!(s.attention(), 0); // working needs no look
+    }
+
+    #[test]
+    fn heartbeat_clears_needs_you() {
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        s.apply(ev("a", Kind::Prompt), t, t, false, true);
+        s.apply(ev("a", needs()), t, t, false, true);
+        assert_eq!(s.pod().unwrap().status, "needs_you");
+        assert_eq!(s.apply(ev("a", Kind::Heartbeat), t, t, false, true), None);
+        assert_eq!(s.rows()[0].status, "working");
+        // A finished reply is not reopened by a stray heartbeat.
+        s.apply(ev("a", Kind::Finished), t, t, false, true);
+        s.apply(ev("a", Kind::Heartbeat), t, t, false, true);
+        assert_eq!(s.rows()[0].status, "finished");
+    }
+
+    #[test]
+    fn heartbeat_unknown_session_is_ignored() {
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        assert_eq!(s.apply(ev("x", Kind::Heartbeat), t, t, false, true), None);
+        assert!(s.rows().is_empty());
+        assert!(s.pod().is_none());
+    }
+
+    #[test]
+    fn working_expires_after_10_min() {
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        s.apply(ev("a", Kind::Prompt), t, t, false, true);
+        assert!(!s.expire(t + Duration::seconds(599)));
+        let mut s2 = Sessions::default();
+        s2.apply(ev("a", Kind::Prompt), t, t, false, true);
+        assert!(s2.expire(t + Duration::minutes(10)));
+        assert!(s2.rows().is_empty());
+        // A heartbeat at 9 min keeps it until 19 min.
+        s.apply(ev("a", Kind::Heartbeat), t + Duration::minutes(9), t + Duration::minutes(9), false, true);
+        assert!(!s.expire(t + Duration::minutes(18)));
+        assert!(s.expire(t + Duration::minutes(19)));
+    }
+
+    #[test]
+    fn pod_prefers_needs_you_and_counts_more() {
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        s.apply(HookEvent { session_id: "a".into(), project: "pa".into(), kind: Kind::Prompt }, t, t, false, true);
+        s.apply(HookEvent { session_id: "b".into(), project: "pb".into(), kind: needs() }, t, t, false, true);
+        s.apply(HookEvent { session_id: "c".into(), project: "pc".into(), kind: Kind::Prompt }, t, t, false, true);
+        s.apply(HookEvent { session_id: "d".into(), project: "pd".into(), kind: Kind::Finished }, t, t, false, true);
+        let pod = s.pod().unwrap();
+        assert_eq!((pod.project.as_str(), pod.status, pod.more), ("pb", "needs_you", 2));
+        let mut only_done = Sessions::default();
+        only_done.apply(ev("d", Kind::Finished), t, t, false, true);
+        assert!(only_done.pod().is_none());
+    }
+
+    #[test]
+    fn post_tool_use_parses_as_heartbeat() {
+        let e = parse_event(r#"{"hook_event_name":"PostToolUse","session_id":"s","cwd":"/x/p"}"#).unwrap();
+        assert_eq!((e.kind, e.project.as_str()), (Kind::Heartbeat, "p"));
     }
 }

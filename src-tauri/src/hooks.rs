@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 pub const MARKER: &str = "claude-notch";
-pub const EVENTS: [&str; 5] = ["Notification", "PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"];
+pub const EVENTS: [&str; 6] = ["Notification", "PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd", "PostToolUse"];
 pub const HINT_NOT_FOUND: &str = "Install or find Claude Code first";
 pub const HINT_START_WSL: &str = "Start WSL to change this";
 const INVALID_JSON: &str = "Couldn't read Claude's settings.json, so nothing was changed";
@@ -548,5 +548,22 @@ mod tests {
     fn error_copy() {
         assert_eq!(HookError::InvalidJson.message(), INVALID_JSON);
     }
-}
 
+    #[test]
+    fn reinstall_adds_post_tool_use() {
+        // A v1.1 install: our five entries plus an Orca PostToolUse entry.
+        let old_events = ["Notification", "PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"];
+        let mut v = serde_json::json!({"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "orca"}]}]}});
+        for e in old_events {
+            v["hooks"][e] = serde_json::json!([{"hooks": [{"type": "command", "command": CMD}]}]);
+        }
+        let out: serde_json::Value = serde_json::from_str(&install(&v.to_string(), CMD).unwrap()).unwrap();
+        assert_eq!(EVENTS.len(), 6);
+        assert_eq!(EVENTS[5], "PostToolUse");
+        let ours = |e: &str| out["hooks"][e].as_array().unwrap().iter().filter(|g| g["hooks"][0]["command"] == CMD).count();
+        for e in EVENTS {
+            assert_eq!(ours(e), 1, "{e}");
+        }
+        assert_eq!(out["hooks"]["PostToolUse"][0]["hooks"][0]["command"], "orca");
+    }
+}

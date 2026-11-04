@@ -167,6 +167,26 @@ fn move_hooks(app: AppHandle, old_source: Option<source::Source>) {
 }
 
 /// The Task alerts switch, read from Claude's settings.json (seconds over WSL, so off the main thread).
+/// Once Claude is found, re-installs our hooks if they are on, so an install from an older
+/// version gains new events (the PostToolUse heartbeat). Idempotent; foreign hooks stay.
+fn refresh_hooks(app: AppHandle) {
+    std::thread::spawn(move || {
+        for _ in 0..120 {
+            let (s, source) = app.state::<AppState>().snapshot();
+            if let Some(src) = source.filter(|s| *s != source::Source::NotFound) {
+                if hooks::status(Some(&src), s.start_wsl, &SystemRunner).on {
+                    let dir = app.state::<AppState>().events_dir();
+                    if let Err(e) = hooks::set(Some(&src), s.start_wsl, true, &dir, &SystemRunner) {
+                        eprintln!("hooks: refresh: {e}");
+                    }
+                }
+                return;
+            }
+            std::thread::sleep(Duration::from_secs(5));
+        }
+    });
+}
+
 #[tauri::command]
 async fn get_task_alerts(app: AppHandle) -> Result<hooks::TaskAlerts, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -440,6 +460,7 @@ fn main() {
             }
             tray::build(app.handle())?;
             track_events(app.handle().clone());
+            refresh_hooks(app.handle().clone());
             apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
             #[cfg(debug_assertions)]
             if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
