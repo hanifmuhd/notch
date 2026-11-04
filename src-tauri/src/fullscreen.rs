@@ -24,10 +24,13 @@ pub fn should_show(show_notch: bool, fullscreen: bool) -> bool {
     show_notch && !fullscreen
 }
 
+/// The desktop itself is the foreground window (after Show desktop or Win+D).
+pub fn is_desktop(class: &str) -> bool {
+    class == "Progman" || class == "WorkerW"
+}
+
 #[cfg(windows)]
-pub use win::{foreground_fullscreen_on, quns_d3d_fullscreen};
-#[cfg(all(windows, debug_assertions))]
-pub use win::foreground_class;
+pub use win::{foreground_class, foreground_fullscreen_on, quns_d3d_fullscreen};
 
 #[cfg(windows)]
 mod win {
@@ -56,8 +59,7 @@ mod win {
         Rect { x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top }
     }
 
-    /// Class of the foreground window, for the debug log.
-    #[cfg(debug_assertions)]
+    /// Class of the foreground window (debug log, and "is the desktop in front").
     pub fn foreground_class() -> String {
         let fg = unsafe { GetForegroundWindow() };
         if fg.0.is_null() { String::new() } else { class_of(fg) }
@@ -135,5 +137,14 @@ mod tests {
         assert!(!should_show(true, true));
         assert!(!should_show(false, false));
         assert!(!should_show(false, true));
+    }
+
+    #[test]
+    fn desktop_classes() {
+        assert!(is_desktop("Progman"));
+        assert!(is_desktop("WorkerW"));
+        assert!(!is_desktop("Shell_TrayWnd"));
+        assert!(!is_desktop("Notepad"));
+        assert!(!is_desktop(""));
     }
 }

@@ -484,9 +484,16 @@ fn track_foreground(app: AppHandle) {
         let fg = unsafe { GetForegroundWindow() }.0 as isize;
         if fg != 0 && fg != notch.0 as isize {
             app.state::<AppState>().set_prev_foreground(fg);
-            // Stay behind windows: once another window is in front, sink the notch again.
+            // Stay behind windows: once another window is in front, sink the notch again (which
+            // also drops always-on-top). But while the desktop itself is in front (Show desktop,
+            // Win+D) Explorer keeps it above every normal window, so the notch goes always-on-top
+            // until another window comes forward.
             if stays_behind(&app) {
-                sink(notch);
+                if fullscreen::is_desktop(&fullscreen::foreground_class()) {
+                    lift(notch);
+                } else {
+                    sink(notch);
+                }
             }
             // In the taskbar, clicking the taskbar raises it over the capsule: lift ours again.
             if mode().0 != Mode::Top {
