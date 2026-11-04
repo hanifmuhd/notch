@@ -42,6 +42,10 @@ pub struct Settings {
     pub show_in: ShowIn,
     /// Keep the notch below other windows so a maximised window covers it (spec 5.6).
     pub stay_behind: bool,
+    /// Prayer times (prayer spec 5.4): off by default; JAKIM zone; reminder minutes 0/5/10/15.
+    pub prayer_on: bool,
+    pub prayer_zone: String,
+    pub prayer_remind: u32,
 }
 
 impl Default for Settings {
@@ -57,6 +61,9 @@ impl Default for Settings {
             task_finished: true,
             show_in: ShowIn::Top,
             stay_behind: false,
+            prayer_on: false,
+            prayer_zone: "WLY01".into(),
+            prayer_remind: 10,
         }
     }
 }
@@ -89,6 +96,9 @@ pub fn save(path: &Path, s: &Settings) -> io::Result<()> {
 pub fn clamp(mut s: Settings) -> Settings {
     s.session_threshold = s.session_threshold.clamp(50, 99);
     s.week_threshold = s.week_threshold.clamp(50, 99);
+    if ![0, 5, 10, 15].contains(&s.prayer_remind) {
+        s.prayer_remind = 10;
+    }
     s
 }
 
@@ -141,6 +151,9 @@ mod tests {
             task_finished: false,
             show_in: ShowIn::Taskbar,
             stay_behind: true,
+            prayer_on: true,
+            prayer_zone: "SGR01".into(),
+            prayer_remind: 5,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -228,6 +241,22 @@ mod tests {
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
         assert!(fs::read_to_string(&path).unwrap().contains("\"show_in\": \"taskbar\""));
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_settings_get_prayer_defaults() {
+        let dir = test_dir("prayer_defaults");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"session_threshold":90,"show_in":"top","stay_behind":false}"#).unwrap();
+        let s = load(&path);
+        assert!(!s.prayer_on);
+        assert_eq!(s.prayer_zone, "WLY01");
+        assert_eq!(s.prayer_remind, 10);
+        // Only Off / 5 / 10 / 15 are allowed.
+        fs::write(&path, r#"{"prayer_remind":7}"#).unwrap();
+        assert_eq!(load(&path).prayer_remind, 10);
         let _ = fs::remove_dir_all(&dir);
     }
 }

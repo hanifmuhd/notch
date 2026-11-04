@@ -1,9 +1,11 @@
 //! Prayer times from JAKIM's e-solat month data (prayer spec 5.1-5.3): parsing, the next and
 //! previous prayer, and which alert is due. Pure, so it is tested without Tauri or the network.
 
-use chrono::{DateTime, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDate, NaiveTime, TimeZone, Utc};
 use chrono_tz::Asia::Kuala_Lumpur;
+use crate::source::Runner;
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Prayer {
@@ -74,6 +76,32 @@ pub fn parse_month(json: &str) -> Option<Vec<Day>> {
         .collect();
     days.sort_by_key(|d| d.date);
     (!days.is_empty()).then_some(days)
+}
+
+/// Where a zone's month is kept: `prayer-<ZONE>-<YYYY-MM>.json` in the app's folder.
+pub fn cache_path(dir: &Path, zone: &str, month: (i32, u32)) -> PathBuf {
+    dir.join(format!("prayer-{zone}-{}-{:02}.json", month.0, month.1))
+}
+
+/// Downloads the month with Windows' curl; the body only when it parses (prayer spec 5.1).
+pub fn fetch_month(runner: &dyn Runner, zone: &str) -> Option<String> {
+    let url = format!("https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=month&zone={zone}");
+    let body = runner
+        .run("curl.exe", &["-s", "-f", "-m", "30", "-A", "ClaudeNotch", &url], std::time::Duration::from_secs(35))
+        .ok()?;
+    parse_month(&body).map(|_| body)
+}
+
+/// This month's and next month's cached days (whatever is on disk), in order.
+pub fn load_days(dir: &Path, zone: &str, now: DateTime<Utc>) -> Vec<Day> {
+    let today = now.with_timezone(&Kuala_Lumpur).date_naive();
+    let next = today.checked_add_months(chrono::Months::new(1)).unwrap_or(today);
+    [today, next]
+        .iter()
+        .filter_map(|d| std::fs::read_to_string(cache_path(dir, zone, (d.year(), d.month()))).ok())
+        .filter_map(|text| parse_month(&text))
+        .flatten()
+        .collect()
 }
 
 /// Every prayer moment in order.
@@ -234,5 +262,50 @@ mod tests {
         assert_eq!(next_wake(&d, my(4, 17, 0), 10), Some(my(4, 18, 48)));
         assert_eq!(next_wake(&d, my(4, 18, 50), 10), Some(my(4, 18, 58)));
         assert_eq!(next_wake(&d, my(4, 18, 50), 0), Some(my(4, 18, 58)));
+    }
+
+    struct OneCall(std::cell::RefCell<Vec<String>>, Result<String, crate::source::RunError>);
+    impl Runner for OneCall {
+        fn run(&self, program: &str, args: &[&str], _t: std::time::Duration) -> Result<String, crate::source::RunError> {
+            self.0.borrow_mut().push(format!("{program} {}", args.join(" ")));
+            self.1.clone()
+        }
+    }
+
+    #[test]
+    fn cache_path_includes_zone_and_month() {
+        let p = cache_path(Path::new("C:/x"), "WLY02", (2026, 11));
+        assert_eq!(p, Path::new("C:/x").join("prayer-WLY02-2026-11.json"));
+    }
+
+    #[test]
+    fn fetch_uses_curl_with_zone() {
+        let r = OneCall(Default::default(), Ok(FIXTURE.to_string()));
+        assert_eq!(fetch_month(&r, "WLY02").as_deref(), Some(FIXTURE));
+        assert_eq!(
+            r.0.borrow()[0],
+            "curl.exe -s -f -m 30 -A ClaudeNotch https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=month&zone=WLY02"
+        );
+    }
+
+    #[test]
+    fn fetch_rejects_bad_body() {
+        let r = OneCall(Default::default(), Ok("<html>maintenance</html>".into()));
+        assert_eq!(fetch_month(&r, "WLY01"), None);
+        let r = OneCall(Default::default(), Err(crate::source::RunError::Timeout));
+        assert_eq!(fetch_month(&r, "WLY01"), None);
+    }
+
+    #[test]
+    fn today_missing_is_unavailable() {
+        let dir = std::env::temp_dir().join(format!("notch-prayer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(load_days(&dir, "WLY01", my(4, 12, 0)).is_empty());
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(cache_path(&dir, "WLY01", (2026, 11)), FIXTURE).unwrap();
+        let d = load_days(&dir, "WLY01", my(4, 12, 0));
+        assert!(today(&d, my(4, 12, 0)).is_some());
+        assert!(load_days(&dir, "WLY02", my(4, 12, 0)).is_empty()); // another zone's month is not used
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
