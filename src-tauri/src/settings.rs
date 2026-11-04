@@ -54,16 +54,19 @@ pub fn load(path: &Path) -> Settings {
 }
 
 /// Writes to `<path>.tmp` then renames over the target, so a crash never leaves a half-written file.
-pub fn save(path: &Path, s: &Settings) -> io::Result<()> {
+pub fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    let json = serde_json::to_string_pretty(s).map_err(io::Error::other)?;
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, json)?;
+    std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)
+}
+
+pub fn save(path: &Path, s: &Settings) -> io::Result<()> {
+    write_atomic(path, &serde_json::to_string_pretty(s).map_err(io::Error::other)?)
 }
 
 pub fn clamp(mut s: Settings) -> Settings {

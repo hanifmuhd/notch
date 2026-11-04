@@ -1,7 +1,7 @@
 //! Shared app state behind one mutex: last reading, alert memory, settings and the
 //! single-flight flag. Pure logic only, so it is testable without Tauri.
 
-use crate::alerts::{evaluate, AlertEvent, AlertState, Thresholds};
+use crate::alerts::{self, evaluate, AlertEvent, AlertState, Thresholds};
 use crate::settings::{self, Settings, SourcePref};
 use crate::source::{detect_with, usage_command, wsl_running, RunError, Runner, Source, CLI_TIMEOUT};
 use crate::usage::{looks_logged_out, parse_usage, UsageError, UsageReading};
@@ -17,6 +17,7 @@ struct Inner {
     /// Claude Code asked for /login on the latest check; cleared by the next good reading.
     logged_out: bool,
     alerts: AlertState,
+    alerts_path: PathBuf,
     settings: Settings,
     settings_path: PathBuf,
     /// None = not looked for yet (never shown as "Claude not installed").
@@ -33,11 +34,13 @@ pub struct AppState(Mutex<Inner>);
 impl AppState {
     pub fn new(settings: Settings, settings_path: PathBuf) -> Self {
         let source = source_for(&settings.source);
+        let alerts_path = settings_path.with_file_name("alerts.json");
         AppState(Mutex::new(Inner {
             reading: None,
             last_ok: true,
             logged_out: false,
-            alerts: AlertState::default(),
+            alerts: alerts::load(&alerts_path),
+            alerts_path,
             settings,
             settings_path,
             // Auto re-detects on the first refresh; explicit prefs resolve at once.
@@ -139,7 +142,13 @@ impl Inner {
         let Some(r) = &self.reading else { return vec![] };
         let t = Thresholds { session: self.settings.session_threshold, week: self.settings.week_threshold };
         let (state, events) = evaluate(&self.alerts, r, &t);
-        self.alerts = state;
+        if state != self.alerts {
+            // Losing the memory only risks one repeat toast after a restart, so never fatal.
+            if let Err(e) = alerts::save(&self.alerts_path, &state) {
+                eprintln!("alerts: save failed: {e}");
+            }
+            self.alerts = state;
+        }
         events
     }
 }
@@ -203,8 +212,13 @@ mod tests {
     use std::cell::RefCell;
     use std::time::Duration as StdDuration;
 
+    /// Per-test folder, so one test's alerts.json never reaches another's AppState.
+    fn scratch_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("notch-app-state-{}-{}", std::process::id(), name))
+    }
+
     fn state() -> AppState {
-        let s = AppState::new(Settings::default(), std::env::temp_dir().join("notch-app-state-unused.json"));
+        let s = AppState::new(Settings::default(), scratch_dir("unused").join("settings.json"));
         s.lock().source = Some(Source::Windows);
         s
     }
@@ -360,7 +374,7 @@ mod tests {
 
     #[test]
     fn fresh_auto_state_shows_no_data() {
-        let s = AppState::new(Settings::default(), std::env::temp_dir().join("notch-app-state-unused.json"));
+        let s = AppState::new(Settings::default(), scratch_dir("unused").join("settings.json"));
         assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::NoData);
     }
 
@@ -369,7 +383,7 @@ mod tests {
         let r = no_distro_running();
         let s = AppState::new(
             Settings { start_wsl: false, ..Settings::default() },
-            std::env::temp_dir().join("notch-app-state-unused.json"),
+            scratch_dir("unused").join("settings.json"),
         );
         s.try_start_refresh();
         assert!(matches!(fetch(&s, &r), Fetched::Failed));
@@ -388,7 +402,7 @@ mod tests {
             source: SourcePref::Wsl { distro: "Ubuntu".into() },
             ..Settings::default()
         };
-        let s = AppState::new(settings, std::env::temp_dir().join("notch-app-state-unused.json"));
+        let s = AppState::new(settings, scratch_dir("unused").join("settings.json"));
         s.try_start_refresh();
         s.finish_refresh(Fetched::Reading(reading(40.0)));
         s.try_start_refresh();
@@ -402,13 +416,13 @@ mod tests {
 
     #[test]
     fn source_change_mid_detect_not_overwritten() {
-        let s = AppState::new(Settings::default(), std::env::temp_dir().join("notch-app-state-mid.json"));
+        let s = AppState::new(Settings::default(), scratch_dir("mid").join("settings.json"));
         let (old, _) = s.snapshot();
         // Detection for Auto is running; the user switches to Windows meanwhile.
         s.save_settings(Settings { source: SourcePref::Windows, ..Settings::default() }).unwrap();
         assert!(!s.set_detected(&old.source, Some(Source::Wsl { distro: "Ubuntu".into() })));
         assert_eq!(s.snapshot().1, Some(Source::Windows));
-        let _ = std::fs::remove_file(std::env::temp_dir().join("notch-app-state-mid.json"));
+        let _ = std::fs::remove_file(scratch_dir("mid").join("settings.json"));
     }
 
     #[test]
@@ -423,6 +437,21 @@ mod tests {
         // With nothing running, the caller's own refresh_now handles it.
         s.save_settings(Settings { source: SourcePref::Auto, ..Settings::default() }).unwrap();
         assert!(!s.take_refresh_again());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn restart_does_not_refire() {
+        let dir = scratch_dir("restart");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("settings.json");
+        let r = reading(92.0);
+        let first = AppState::new(Settings::default(), path.clone());
+        first.try_start_refresh();
+        assert_eq!(first.finish_refresh(Fetched::Reading(r.clone())).len(), 1);
+        let second = AppState::new(Settings::default(), path);
+        second.try_start_refresh();
+        assert!(second.finish_refresh(Fetched::Reading(r)).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

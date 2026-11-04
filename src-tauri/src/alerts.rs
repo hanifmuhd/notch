@@ -3,7 +3,8 @@
 
 use crate::usage::{Limit, UsageReading};
 use chrono::{DateTime, Duration, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::{io, path::Path};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LimitKind {
@@ -25,14 +26,14 @@ pub struct Thresholds {
     pub week: u8,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Armed {
     fired_alert: bool,
     fired_full: bool,
     resets_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AlertState {
     session: Armed,
     week: Armed,
@@ -55,6 +56,18 @@ impl Default for AlertState {
     fn default() -> Self {
         AlertState { session: Armed::default(), week: Armed::default() }
     }
+}
+
+/// Missing, unreadable or corrupt files mean nothing has fired yet.
+pub fn load(path: &Path) -> AlertState {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+pub fn save(path: &Path, s: &AlertState) -> io::Result<()> {
+    crate::settings::write_atomic(path, &serde_json::to_string(s).map_err(io::Error::other)?)
 }
 
 pub fn level(used_pct: f64, threshold: u8) -> Level {
@@ -240,5 +253,31 @@ mod tests {
     #[test]
     fn level_serializes_lowercase() {
         assert_eq!(serde_json::to_string(&Level::Alert).unwrap(), "\"alert\"");
+    }
+
+    fn test_dir(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!("notch-alerts-test-{}-{}", std::process::id(), name))
+    }
+
+    #[test]
+    fn alert_state_round_trips() {
+        let dir = test_dir("round_trip");
+        let path = dir.join("alerts.json");
+        let (s, _) = evaluate(&AlertState::default(), &reading(95.0, 100.0, at(2)), &T);
+        assert_ne!(s, AlertState::default());
+        save(&path, &s).unwrap();
+        assert_eq!(load(&path), s);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corrupt_alerts_file_is_default() {
+        let dir = test_dir("corrupt");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("alerts.json");
+        std::fs::write(&path, "{not json").unwrap();
+        assert_eq!(load(&path), AlertState::default());
+        assert_eq!(load(&dir.join("missing.json")), AlertState::default());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
