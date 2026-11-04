@@ -16,6 +16,7 @@
         "height": 480,
         "decorations": false,
         "transparent": true,
+        "shadow": false,
         "alwaysOnTop": true,
         "skipTaskbar": true,
         "focus": false,
