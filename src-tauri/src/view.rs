@@ -31,6 +31,10 @@ pub struct LimitView {
     pub reset_text: String,
     pub pace_text: String,
     pub runs_out_text: Option<String>,
+    /// Closed notch: time to reset, `1:32` / `45m` / `now`, or `ready` when idle.
+    pub countdown_text: String,
+    /// Panel line: `in 1h 32m` / `in 3d 16h`; empty when idle.
+    pub span_text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -101,12 +105,39 @@ pub fn tray_toggle_label(show_notch: bool) -> &'static str {
     if show_notch { "Hide notch" } else { "Show notch" }
 }
 
-fn pill_text(name: &str, now: DateTime<Local>, resets_at: Option<DateTime<Utc>>) -> String {
-    let Some(resets_at) = resets_at else { return format!("{name} full") };
-    match when_text(now, resets_at) {
-        w if w == "now" || w.starts_with("in ") => format!("{name} full, back {w}"),
-        w => format!("{name} full, back in {w}"),
+/// Minutes until `resets_at`, rounded up; 0 or less means it has passed.
+fn minutes_left(now: DateTime<Local>, resets_at: DateTime<Utc>) -> i64 {
+    ((resets_at - now.with_timezone(&Utc)).num_seconds() + 59).div_euclid(60)
+}
+
+pub fn countdown_text(now: DateTime<Local>, resets_at: Option<DateTime<Utc>>) -> String {
+    let Some(r) = resets_at else { return "ready".into() };
+    match minutes_left(now, r) {
+        m if m <= 0 => "now".into(),
+        m if m < 60 => format!("{m}m"),
+        m => format!("{}:{:02}", m / 60, m % 60),
     }
+}
+
+pub fn span_text(now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
+    match minutes_left(now, resets_at) {
+        m if m <= 0 => "now".into(),
+        m if m < 60 => format!("in {m}m"),
+        m if m < 24 * 60 => format!("in {}h {}m", m / 60, m % 60),
+        m => format!("in {}d {}h", m / (24 * 60), m % (24 * 60) / 60),
+    }
+}
+
+/// Full notch text (spec 5.2): the session reads `back in 1:32`; the week names itself.
+fn pill_text(name: &str, now: DateTime<Local>, resets_at: Option<DateTime<Utc>>) -> String {
+    let Some(r) = resets_at else { return format!("{name} full") };
+    let when = if minutes_left(now, r) < 24 * 60 {
+        countdown_text(now, Some(r))
+    } else {
+        span_text(now, r).trim_start_matches("in ").to_string()
+    };
+    let back = if when == "now" { "back now".to_string() } else { format!("back in {when}") };
+    if name == "Session" { back } else { format!("{name} {back}") }
 }
 
 fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Local>) -> LimitView {
@@ -130,6 +161,8 @@ fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Loca
         reset_text: limit.resets_at.map_or("Starts when you next use Claude".into(), |r| reset_text(now, r)),
         pace_text: if limit.resets_at.is_some() { format!("{}% of time passed", pace.round()) } else { String::new() },
         runs_out_text,
+        countdown_text: countdown_text(now, limit.resets_at),
+        span_text: limit.resets_at.map_or(String::new(), |r| span_text(now, r)),
     }
 }
 
@@ -142,6 +175,8 @@ fn empty_limit() -> LimitView {
         reset_text: String::new(),
         pace_text: String::new(),
         runs_out_text: None,
+        countdown_text: String::new(),
+        span_text: String::new(),
     }
 }
 
@@ -342,7 +377,7 @@ mod tests {
         let mut r = reading(100.0, 100.0, now);
         r.session.resets_at = Some(utc(now) + Duration::minutes(80));
         let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
-        assert_eq!(vm.pill_text.as_deref(), Some("Session full, back in 1h 20m"));
+        assert_eq!(vm.pill_text.as_deref(), Some("back in 1:20"));
     }
 
     #[test]
@@ -350,7 +385,7 @@ mod tests {
         let now = local(28, 10, 51);
         let r = reading(10.0, 100.0, now);
         let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
-        assert_eq!(vm.pill_text.as_deref(), Some("Week full, back in Fri 09:00"));
+        assert_eq!(vm.pill_text.as_deref(), Some("Week back in 1d 22h"));
     }
 
     #[test]
@@ -462,5 +497,36 @@ mod tests {
     fn tray_toggle_label_names_the_next_action() {
         assert_eq!(tray_toggle_label(true), "Hide notch");
         assert_eq!(tray_toggle_label(false), "Show notch");
+    }
+
+    #[test]
+    fn countdown_formats() {
+        let now = local(28, 10, 0);
+        assert_eq!(countdown_text(now, Some(utc(now) + Duration::minutes(92))), "1:32");
+        assert_eq!(countdown_text(now, Some(utc(now) + Duration::minutes(45))), "45m");
+        assert_eq!(countdown_text(now, Some(utc(now) + Duration::seconds(30))), "1m");
+        assert_eq!(countdown_text(now, Some(utc(now) - Duration::minutes(1))), "now");
+        assert_eq!(countdown_text(now, None), "ready");
+        assert_eq!(countdown_text(now, Some(utc(now) + Duration::minutes(600))), "10:00");
+    }
+
+    #[test]
+    fn span_formats() {
+        let now = local(28, 10, 0);
+        assert_eq!(span_text(now, utc(now) + Duration::minutes(92)), "in 1h 32m");
+        assert_eq!(span_text(now, utc(now) + Duration::minutes(45)), "in 45m");
+        assert_eq!(span_text(now, utc(now) + Duration::hours(88)), "in 3d 16h");
+        assert_eq!(span_text(now, utc(now) - Duration::minutes(1)), "now");
+    }
+
+    #[test]
+    fn limit_view_carries_countdown() {
+        let now = local(28, 10, 0);
+        let lv = limit_view(&Limit { used_pct: 68.0, resets_at: Some(utc(now) + Duration::minutes(92)) }, 90, SESSION_WINDOW, now);
+        assert_eq!(lv.countdown_text, "1:32");
+        assert_eq!(lv.span_text, "in 1h 32m");
+        let idle = limit_view(&Limit { used_pct: 0.0, resets_at: None }, 90, SESSION_WINDOW, now);
+        assert_eq!(idle.countdown_text, "ready");
+        assert_eq!(idle.span_text, "");
     }
 }
