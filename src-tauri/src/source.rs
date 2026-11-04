@@ -43,6 +43,8 @@ impl Runner for SystemRunner {
             cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
         }
         let mut child = cmd.spawn().map_err(|e| RunError::Spawn(e.to_string()))?;
+        #[cfg(windows)]
+        let job = job::Job::around(&child);
         // Read both pipes on their own threads so a full pipe buffer cannot stall the child.
         let drain = |pipe: Option<Box<dyn Read + Send>>| {
             let (tx, rx) = mpsc::channel();
@@ -63,7 +65,10 @@ impl Runner for SystemRunner {
             match child.try_wait() {
                 Ok(Some(s)) => break s,
                 Ok(None) if Instant::now() >= deadline => {
-                    // Killing wsl.exe may leave the Linux-side claude running (accepted).
+                    // Killing wsl.exe may leave the Linux-side claude running; the WSL command
+                    // has its own `timeout 55` for that.
+                    #[cfg(windows)]
+                    job.terminate();
                     let _ = child.kill();
                     let _ = child.wait();
                     return Err(RunError::Timeout);
@@ -81,6 +86,60 @@ impl Runner for SystemRunner {
             Ok(decode_output(&out))
         } else {
             Err(RunError::Exit(status.code().unwrap_or(-1), decode_output(&err)))
+        }
+    }
+}
+
+/// A Windows Job Object that kills every process the child started when it is closed or
+/// terminated. Best effort: if any call fails the run goes on without it.
+#[cfg(windows)]
+mod job {
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::*;
+
+    pub struct Job(Option<HANDLE>);
+
+    impl Job {
+        pub fn around(child: &Child) -> Job {
+            let made = unsafe { Self::create(HANDLE(child.as_raw_handle())) };
+            if let (Err(e), true) = (&made, cfg!(debug_assertions)) {
+                eprintln!("job object unavailable: {e}");
+            }
+            Job(made.ok())
+        }
+
+        unsafe fn create(child: HANDLE) -> windows::core::Result<HANDLE> {
+            let job = CreateJobObjectW(None, None)?;
+            let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let set = SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const _,
+                std::mem::size_of_val(&info) as u32,
+            )
+            .and_then(|_| AssignProcessToJobObject(job, child));
+            if let Err(e) = set {
+                let _ = CloseHandle(job);
+                return Err(e);
+            }
+            Ok(job)
+        }
+
+        pub fn terminate(&self) {
+            if let Some(h) = self.0 {
+                let _ = unsafe { TerminateJobObject(h, 1) };
+            }
+        }
+    }
+
+    impl Drop for Job {
+        fn drop(&mut self) {
+            if let Some(h) = self.0 {
+                let _ = unsafe { CloseHandle(h) };
+            }
         }
     }
 }
@@ -146,12 +205,18 @@ pub fn usage_command(source: &Source) -> (String, Vec<String>) {
         // cmd /c launches both claude.exe and an npm claude.cmd shim.
         Source::Windows | Source::NotFound => (
             "cmd.exe",
-            vec!["/d", "/c", "claude", "-p", "--output-format", "json", "/usage"],
+            vec![
+                "/d", "/c", "claude", "-p", "--settings", r#"{"disableAllHooks":true}"#,
+                "--output-format", "json", "/usage",
+            ],
         ),
         // The login shell is required: a plain `wsl -- claude` lacks ~/.local/bin on PATH.
         Source::Wsl { distro } => (
             "wsl.exe",
-            vec!["-d", distro, "--", "bash", "-lc", "claude -p --output-format json /usage"],
+            vec![
+                "-d", distro, "--", "bash", "-lc",
+                r#"timeout 55 claude -p --settings '{"disableAllHooks":true}' --output-format json /usage"#,
+            ],
         ),
     };
     (program.to_string(), args.into_iter().map(String::from).collect())
@@ -260,7 +325,10 @@ mod tests {
         assert_eq!(p, "wsl.exe");
         assert_eq!(
             a,
-            ["-d", "Ubuntu", "--", "bash", "-lc", "claude -p --output-format json /usage"]
+            [
+                "-d", "Ubuntu", "--", "bash", "-lc",
+                "timeout 55 claude -p --settings '{\"disableAllHooks\":true}' --output-format json /usage"
+            ]
         );
     }
 
@@ -268,7 +336,10 @@ mod tests {
     fn windows_command_shape() {
         let (p, a) = usage_command(&Source::Windows);
         assert_eq!(p, "cmd.exe");
-        assert_eq!(a, ["/d", "/c", "claude", "-p", "--output-format", "json", "/usage"]);
+        assert_eq!(
+            a,
+            ["/d", "/c", "claude", "-p", "--settings", "{\"disableAllHooks\":true}", "--output-format", "json", "/usage"]
+        );
     }
 
     #[test]
@@ -329,6 +400,22 @@ mod tests {
         );
         assert_eq!(r, Err(RunError::Timeout));
         assert!(start.elapsed() < Duration::from_millis(2500));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn timeout_kills_grandchildren() {
+        // The parent starts a grandchild that would create a marker file after 3 s.
+        let marker = std::env::temp_dir().join(format!("notch-job-{}", std::process::id()));
+        let _ = std::fs::remove_file(&marker);
+        let script = format!(
+            "Start-Process -NoNewWindow powershell -ArgumentList '-NoProfile','-Command','Start-Sleep 3; New-Item -ItemType File -Path \"{}\"'; Start-Sleep 10",
+            marker.display()
+        );
+        let r = SystemRunner.run("powershell", &["-NoProfile", "-Command", &script], Duration::from_secs(1));
+        assert_eq!(r, Err(RunError::Timeout));
+        std::thread::sleep(Duration::from_secs(4));
+        assert!(!marker.exists(), "grandchild survived the timeout");
     }
 
     #[test]
