@@ -187,14 +187,16 @@ button { font: inherit; color: inherit; }
 .pod:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .notch.is-open .pod { opacity: 0; transform: scale(.6); pointer-events: none; }
 @keyframes pod-in { from { opacity: 0; transform: scale(.6); } }
-.pod__spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid #9fb8ff44; border-top-color: var(--week); animation: spin 1s linear infinite; }
+/* a still dot, not a spinner: a nonstop animation redraws every frame (~9 % of a core measured) */
+.pod__spin { width: 8px; height: 8px; border-radius: 50%; background: var(--week); }
 .pod__state.is-alert { color: var(--alert); }
 .pod__state.is-working { color: var(--week); }
 .pod__age, .pod__more { color: var(--ink-muted); font-weight: 600; }
 
-/* calm glow while a session needs you (owner's choice; slow and soft) */
-.notch.is-needs .pill, .notch.is-needs .panel { animation: breathe 2.4s ease-in-out infinite; }
-@keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 #f0a54100; } 50% { box-shadow: 0 2px 16px 1px #f0a54152; } }
+/* calm glow while a session needs you (owner's choice): it breathes three times to catch the
+   eye, then stays as a steady glow, because a glow that animates forever costs CPU every frame */
+.notch.is-needs .pill, .notch.is-needs .panel { box-shadow: 0 2px 14px 1px #f0a54140; animation: breathe 2.4s ease-in-out 3; }
+@keyframes breathe { 0%, 100% { box-shadow: 0 2px 14px 1px #f0a54140; } 50% { box-shadow: 0 2px 18px 2px #f0a54166; } }
 
 /* ---------- taskbar mode (spec 5.5): a capsule in the taskbar that grows upward ---------- */
 
@@ -257,5 +259,5 @@ button { font: inherit; color: inherit; }
   .notch.is-needs .pill, .notch.is-needs .panel { animation: none; box-shadow: 0 0 0 1.5px var(--alert); }
   .ring__arc { transition: none; }
   .icon-btn:active { transform: none; }
-  .icon-btn[aria-busy="true"] svg, .pod__spin { animation: none; }
+  .icon-btn[aria-busy="true"] svg { animation: none; }
 }
