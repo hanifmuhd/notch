@@ -96,7 +96,8 @@ fn refresh(app: &AppHandle) {
     loop {
         emit(app, None);
         // A panic must still release the in-flight slot.
-        let result = catch_unwind(AssertUnwindSafe(|| app_state::fetch(&state, &SystemRunner))).ok().flatten();
+        let result = catch_unwind(AssertUnwindSafe(|| app_state::fetch(&state, &SystemRunner)))
+            .unwrap_or(app_state::Fetched::Failed);
         let events = state.finish_refresh(result);
         emit(app, announce(&events));
         on_alert(app, events);

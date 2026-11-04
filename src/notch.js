@@ -48,6 +48,8 @@ function renderPill(vm) {
   const parts = [];
   if (vm.pill === 'no_claude') {
     parts.push(el('span', 'stat__label', 'Install Claude Code to see your limits'));
+  } else if (vm.pill === 'logged_out') {
+    parts.push(el('span', 'stat__label', 'Log in to Claude Code'));
   } else if (vm.pill === 'no_data' && vm.refreshing) {
     parts.push(el('span', 'stat__label', 'Updating…'));
   } else {
@@ -64,7 +66,7 @@ function renderPill(vm) {
     if (vm.pill === 'stale') parts.push(stat('As of', vm.updated_text.replace(/^As of /, '')));
   }
   pill.replaceChildren(...parts);
-  pill.classList.toggle('is-stale', ['stale', 'no_data', 'no_claude'].includes(vm.pill));
+  pill.classList.toggle('is-stale', ['stale', 'no_data', 'no_claude', 'logged_out'].includes(vm.pill));
 }
 
 function renderLimit(key, lv) {

@@ -23,6 +23,14 @@ pub enum UsageError {
     NoJson,
     MissingField(&'static str),
     BadTime(String),
+    /// Claude Code is not signed in; the text says to run /login.
+    LoggedOut,
+}
+
+/// True if error text from the CLI (JSON `result` or stderr) says Claude is not signed in.
+pub fn looks_logged_out(text: &str) -> bool {
+    let t = text.to_lowercase();
+    ["/login", "log in", "logged out", "invalid api key"].iter().any(|k| t.contains(k))
 }
 
 pub fn parse_usage(raw: &str, fetched_at: DateTime<Utc>) -> Result<UsageReading, UsageError> {
@@ -36,6 +44,9 @@ pub fn parse_usage(raw: &str, fetched_at: DateTime<Utc>) -> Result<UsageReading,
         .get("result")
         .and_then(|r| r.as_str())
         .ok_or(UsageError::MissingField("result"))?;
+    if value.get("is_error").and_then(|e| e.as_bool()) == Some(true) && looks_logged_out(result) {
+        return Err(UsageError::LoggedOut);
+    }
 
     let find = |prefix: &str| {
         result
@@ -216,6 +227,26 @@ mod tests {
     fn garbled_reset_part_is_still_bad_time() {
         let r = raw(&format!("Current session: 0% used · soon\n{WEEK_LINE}"));
         assert!(matches!(parse_usage(&r, t0()), Err(UsageError::BadTime(_))));
+    }
+
+    #[test]
+    fn login_error_is_logged_out() {
+        let r = json!({"is_error": true, "result": "Invalid API key · Please run /login"}).to_string();
+        assert_eq!(parse_usage(&r, t0()), Err(UsageError::LoggedOut));
+    }
+
+    #[test]
+    fn other_error_is_not_logged_out() {
+        let r = json!({"is_error": true, "result": "Something broke"}).to_string();
+        assert_eq!(parse_usage(&r, t0()), Err(UsageError::MissingField("session")));
+    }
+
+    #[test]
+    fn login_text_matching() {
+        for t in ["Please run /login", "You are logged out", "Please Log In", "INVALID API KEY"] {
+            assert!(looks_logged_out(t), "{t}");
+        }
+        assert!(!looks_logged_out("rate limited"));
     }
 
     #[test]

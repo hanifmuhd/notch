@@ -14,6 +14,7 @@ use serde::Serialize;
 pub enum PillState {
     NoClaude,
     NoData,
+    LoggedOut,
     Normal,
     Alert,
     Full,
@@ -84,7 +85,7 @@ pub fn toast_text(e: &AlertEvent, now: DateTime<Local>) -> (String, String) {
 /// Tray tooltip: the two numbers, or the app name when there is nothing to show.
 pub fn tray_tooltip(vm: &ViewModel) -> String {
     match vm.pill {
-        PillState::NoClaude | PillState::NoData => "Claude Notch".into(),
+        PillState::NoClaude | PillState::NoData | PillState::LoggedOut => "Claude Notch".into(),
         _ => format!("Session {}, week {}", vm.session.value_text, vm.week.value_text),
     }
 }
@@ -144,6 +145,7 @@ pub fn build(
     last_ok: bool,
     source: Option<&Source>,
     settings: &Settings,
+    logged_out: bool,
     now: DateTime<Local>,
 ) -> ViewModel {
     let (session, week) = match reading {
@@ -158,6 +160,11 @@ pub fn build(
             PillState::NoClaude,
             None,
             "Install Claude Code to see your limits".to_string(),
+        ),
+        (_, _) if logged_out => (
+            PillState::LoggedOut,
+            None,
+            "Log in to Claude Code: run claude, then /login".to_string(),
         ),
         (_, None) => (PillState::NoData, None, "No reading yet".to_string()),
         (_, Some(r)) => {
@@ -223,7 +230,7 @@ mod tests {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 10.0, now);
         r.session.resets_at = None;
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Full);
         assert_eq!(vm.pill_text.as_deref(), Some("Session full"));
     }
@@ -258,7 +265,7 @@ mod tests {
         let now = local(28, 10, 0);
         let r = reading(10.0, 10.0, now);
         // 133 min left of 300 -> 55.67 % passed
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.session.pace_text, "56% of time passed");
         assert_eq!(vm.session.value_text, "10%");
     }
@@ -267,7 +274,7 @@ mod tests {
     fn runs_out_text() {
         let now = local(28, 10, 0);
         let r = reading(80.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         let t = runs_out_at(80.0, SESSION_WINDOW, utc(now), r.session.resets_at.unwrap()).unwrap();
         let want = format!("Runs out around {}", t.with_timezone(&Local).format("%H:%M"));
         assert_eq!(vm.session.runs_out_text, Some(want));
@@ -280,7 +287,7 @@ mod tests {
     fn runs_out_hidden_when_full() {
         let now = local(28, 10, 0);
         let r = reading(100.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.session.level, Level::Full);
         assert_eq!(vm.session.runs_out_text, None);
     }
@@ -289,10 +296,10 @@ mod tests {
     fn stale_state_and_text() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Stale);
         assert_eq!(vm.updated_text, "As of 10:51");
-        let ok = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let ok = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!((ok.pill, ok.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
@@ -300,7 +307,7 @@ mod tests {
     fn old_reading_is_stale() {
         let now = local(28, 11, 3); // reading() was fetched at 10:51
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Stale, "As of 10:51"));
     }
 
@@ -308,7 +315,7 @@ mod tests {
     fn recent_reading_not_stale() {
         let now = local(28, 10, 55);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
@@ -316,10 +323,10 @@ mod tests {
     fn full_beats_alert_beats_stale() {
         let now = local(28, 11, 0);
         let r = reading(100.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Full);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Alert);
     }
 
@@ -328,7 +335,7 @@ mod tests {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 100.0, now);
         r.session.resets_at = Some(utc(now) + Duration::minutes(80));
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill_text.as_deref(), Some("Session full, back in 1h 20m"));
     }
 
@@ -336,20 +343,34 @@ mod tests {
     fn pill_text_full_week() {
         let now = local(28, 10, 51);
         let r = reading(10.0, 100.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!(vm.pill_text.as_deref(), Some("Week full, back in Fri 09:00"));
     }
 
     #[test]
     fn no_claude() {
-        let vm = build(None, true, Some(&Source::NotFound), &Settings::default(), local(28, 10, 0));
+        let vm = build(None, true, Some(&Source::NotFound), &Settings::default(), false, local(28, 10, 0));
         assert_eq!(vm.pill, PillState::NoClaude);
         assert_eq!(vm.updated_text, "Install Claude Code to see your limits");
     }
 
     #[test]
+    fn logged_out_pill() {
+        let now = local(28, 10, 0);
+        let r = reading(10.0, 10.0, now);
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), true, now);
+        assert_eq!(vm.pill, PillState::LoggedOut);
+        assert_eq!(vm.updated_text, "Log in to Claude Code: run claude, then /login");
+        assert_eq!(serde_json::to_string(&vm.pill).unwrap(), "\"logged_out\"");
+        assert_eq!(tray_tooltip(&vm), "Claude Notch");
+        // Not installed still wins.
+        let vm = build(None, true, Some(&Source::NotFound), &Settings::default(), true, now);
+        assert_eq!(vm.pill, PillState::NoClaude);
+    }
+
+    #[test]
     fn no_data() {
-        let vm = build(None, true, Some(&Source::Windows), &Settings::default(), local(28, 10, 0));
+        let vm = build(None, true, Some(&Source::Windows), &Settings::default(), false, local(28, 10, 0));
         assert_eq!(vm.pill, PillState::NoData);
         assert_eq!(vm.session.value_text, "–");
         assert_eq!(vm.week.value_text, "–");
@@ -360,7 +381,7 @@ mod tests {
     fn session_value(used: f64) -> String {
         let now = local(28, 10, 0);
         let r = reading(used, 10.0, now);
-        build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now).session.value_text
+        build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now).session.value_text
     }
 
     #[test]
@@ -381,7 +402,7 @@ mod tests {
     fn stale_text_even_when_alert() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), now);
+        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Alert, "As of 10:51"));
     }
 
@@ -415,17 +436,17 @@ mod tests {
     #[test]
     fn undetected_source_is_not_no_claude() {
         let now = local(28, 10, 0);
-        let vm = build(None, true, None, &Settings::default(), now);
+        let vm = build(None, true, None, &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::NoData, "No reading yet"));
         let r = reading(10.0, 10.0, now);
-        assert_eq!(build(Some(&r), true, None, &Settings::default(), now).pill, PillState::Normal);
+        assert_eq!(build(Some(&r), true, None, &Settings::default(), false, now).pill, PillState::Normal);
     }
 
     #[test]
     fn tray_tooltip_shows_numbers_or_the_name() {
         let now = local(28, 10, 0);
         let r = reading(42.0, 68.0, now);
-        let build_with = |r: Option<&UsageReading>, src: Source| build(r, true, Some(&src), &Settings::default(), now);
+        let build_with = |r: Option<&UsageReading>, src: Source| build(r, true, Some(&src), &Settings::default(), false, now);
         assert_eq!(tray_tooltip(&build_with(Some(&r), Source::Windows)), "Session 42%, week 68%");
         assert_eq!(tray_tooltip(&build_with(None, Source::Windows)), "Claude Notch");
         assert_eq!(tray_tooltip(&build_with(None, Source::NotFound)), "Claude Notch");

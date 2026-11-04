@@ -3,8 +3,8 @@
 
 use crate::alerts::{evaluate, AlertEvent, AlertState, Thresholds};
 use crate::settings::{self, Settings, SourcePref};
-use crate::source::{detect_with, usage_command, wsl_running, Runner, Source, CLI_TIMEOUT};
-use crate::usage::{parse_usage, UsageReading};
+use crate::source::{detect_with, usage_command, wsl_running, RunError, Runner, Source, CLI_TIMEOUT};
+use crate::usage::{looks_logged_out, parse_usage, UsageError, UsageReading};
 use crate::view::{self, ViewModel};
 use chrono::{DateTime, Local, Utc};
 use std::io;
@@ -14,6 +14,8 @@ use std::sync::{Mutex, MutexGuard};
 struct Inner {
     reading: Option<UsageReading>,
     last_ok: bool,
+    /// Claude Code asked for /login on the latest check; cleared by the next good reading.
+    logged_out: bool,
     alerts: AlertState,
     settings: Settings,
     settings_path: PathBuf,
@@ -34,6 +36,7 @@ impl AppState {
         AppState(Mutex::new(Inner {
             reading: None,
             last_ok: true,
+            logged_out: false,
             alerts: AlertState::default(),
             settings,
             settings_path,
@@ -56,12 +59,17 @@ impl AppState {
         !std::mem::replace(&mut s.in_flight, true)
     }
 
-    /// A failed fetch (None) keeps the last reading and marks it stale.
-    pub fn finish_refresh(&self, result: Option<UsageReading>) -> Vec<AlertEvent> {
+    /// A failed or logged-out fetch keeps the last reading and marks it stale.
+    pub fn finish_refresh(&self, result: Fetched) -> Vec<AlertEvent> {
         let mut s = self.lock();
-        s.last_ok = result.is_some();
-        if result.is_some() {
-            s.reading = result;
+        s.last_ok = matches!(result, Fetched::Reading(_));
+        match result {
+            Fetched::Reading(r) => {
+                s.reading = Some(r);
+                s.logged_out = false;
+            }
+            Fetched::LoggedOut => s.logged_out = true,
+            Fetched::Failed => {}
         }
         s.in_flight = false;
         s.run_alerts()
@@ -69,7 +77,7 @@ impl AppState {
 
     pub fn view(&self, now: DateTime<Local>, announce: Option<String>) -> ViewModel {
         let s = self.lock();
-        let mut vm = view::build(s.reading.as_ref(), s.last_ok, s.source.as_ref(), &s.settings, now);
+        let mut vm = view::build(s.reading.as_ref(), s.last_ok, s.source.as_ref(), &s.settings, s.logged_out, now);
         vm.announce = announce;
         vm.refreshing = s.in_flight;
         vm
@@ -145,35 +153,48 @@ fn source_for(pref: &SourcePref) -> Option<Source> {
     }
 }
 
-/// Runs the CLI (blocking, 6-9 s on WSL). None means no reading: the call failed, WSL is
-/// stopped and Start WSL is off, or Claude is not found yet.
-pub fn fetch(state: &AppState, runner: &dyn Runner) -> Option<UsageReading> {
+/// Outcome of one usage check.
+pub enum Fetched {
+    Reading(UsageReading),
+    LoggedOut,
+    /// No reading: the call failed, WSL is stopped and Start WSL is off, or Claude is not found yet.
+    Failed,
+}
+
+/// Runs the CLI (blocking, 6-9 s on WSL).
+pub fn fetch(state: &AppState, runner: &dyn Runner) -> Fetched {
     let (settings, mut source) = state.snapshot();
     // Undetected and NotFound are both retried: Claude may have been installed or WSL started.
     if matches!(source, None | Some(Source::NotFound)) {
         let found = detect_with(runner, &settings.source, settings.start_wsl);
         if !state.set_detected(&settings.source, found.clone()) {
-            return None; // preference changed while detecting; refresh_again follows
+            return Fetched::Failed; // preference changed while detecting; refresh_again follows
         }
         source = found;
     }
-    let source = source.filter(|s| *s != Source::NotFound)?;
+    let Some(source) = source.filter(|s| *s != Source::NotFound) else { return Fetched::Failed };
     if let Source::Wsl { distro } = &source {
         if !settings.start_wsl && !wsl_running(runner, distro) {
-            return None;
+            return Fetched::Failed;
         }
     }
     let (program, args) = usage_command(&source);
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
-    let raw = runner.run(&program, &args, CLI_TIMEOUT).ok()?;
-    parse_usage(&raw, Utc::now()).ok()
+    match runner.run(&program, &args, CLI_TIMEOUT) {
+        Ok(raw) => match parse_usage(&raw, Utc::now()) {
+            Ok(r) => Fetched::Reading(r),
+            Err(UsageError::LoggedOut) => Fetched::LoggedOut,
+            Err(_) => Fetched::Failed,
+        },
+        Err(RunError::Exit(_, stderr)) if looks_logged_out(&stderr) => Fetched::LoggedOut,
+        Err(_) => Fetched::Failed,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::usage::Limit;
-    use crate::source::RunError;
     use chrono::Duration;
     use std::cell::RefCell;
     use std::time::Duration as StdDuration;
@@ -204,7 +225,7 @@ mod tests {
     fn finish_clears_in_flight() {
         let s = state();
         assert!(s.try_start_refresh());
-        s.finish_refresh(None);
+        s.finish_refresh(Fetched::Failed);
         assert!(s.try_start_refresh());
     }
 
@@ -212,9 +233,9 @@ mod tests {
     fn failed_refresh_keeps_last_reading() {
         let s = state();
         s.try_start_refresh();
-        s.finish_refresh(Some(reading(40.0)));
+        s.finish_refresh(Fetched::Reading(reading(40.0)));
         s.try_start_refresh();
-        s.finish_refresh(None);
+        s.finish_refresh(Fetched::Failed);
         let vm = s.view(Local::now(), None);
         assert_eq!(vm.session.value_text, "40%");
         assert!(vm.updated_text.starts_with("As of"));
@@ -224,9 +245,9 @@ mod tests {
     fn crossing_fires_once() {
         let s = state();
         s.try_start_refresh();
-        assert_eq!(s.finish_refresh(Some(reading(95.0))).len(), 1);
+        assert_eq!(s.finish_refresh(Fetched::Reading(reading(95.0))).len(), 1);
         s.try_start_refresh();
-        assert!(s.finish_refresh(Some(reading(96.0))).is_empty());
+        assert!(s.finish_refresh(Fetched::Reading(reading(96.0))).is_empty());
     }
 
     #[test]
@@ -235,7 +256,7 @@ mod tests {
         let path = dir.join("settings.json");
         let s = AppState::new(Settings::default(), path.clone());
         s.try_start_refresh();
-        assert!(s.finish_refresh(Some(reading(60.0))).is_empty());
+        assert!(s.finish_refresh(Fetched::Reading(reading(60.0))).is_empty());
         let (changed, events) = s
             .save_settings(Settings { session_threshold: 10, ..Settings::default() })
             .unwrap();
@@ -286,6 +307,38 @@ mod tests {
     }
 
     #[test]
+    fn exit_with_login_text_is_logged_out() {
+        let r = FakeRunner {
+            map: vec![(
+                "cmd.exe /d /c claude -p --settings {\"disableAllHooks\":true} --output-format json /usage",
+                Err(RunError::Exit(1, "Please run /login".into())),
+            )],
+            calls: RefCell::new(vec![]),
+        };
+        let s = state();
+        assert!(matches!(fetch(&s, &r), Fetched::LoggedOut));
+    }
+
+    #[test]
+    fn logged_out_keeps_old_reading_until_a_reading_clears_it() {
+        let s = state();
+        s.try_start_refresh();
+        s.finish_refresh(Fetched::Reading(reading(40.0)));
+        s.try_start_refresh();
+        s.finish_refresh(Fetched::LoggedOut);
+        let vm = s.view(Local::now(), None);
+        assert_eq!(vm.pill, crate::view::PillState::LoggedOut);
+        assert_eq!(vm.session.value_text, "40%");
+        // A plain failure does not hide the hint.
+        s.try_start_refresh();
+        s.finish_refresh(Fetched::Failed);
+        assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::LoggedOut);
+        s.try_start_refresh();
+        s.finish_refresh(Fetched::Reading(reading(41.0)));
+        assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::Normal);
+    }
+
+    #[test]
     fn fresh_auto_state_shows_no_data() {
         let s = AppState::new(Settings::default(), std::env::temp_dir().join("notch-app-state-unused.json"));
         assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::NoData);
@@ -299,8 +352,8 @@ mod tests {
             std::env::temp_dir().join("notch-app-state-unused.json"),
         );
         s.try_start_refresh();
-        assert!(fetch(&s, &r).is_none());
-        s.finish_refresh(None);
+        assert!(matches!(fetch(&s, &r), Fetched::Failed));
+        s.finish_refresh(Fetched::Failed);
         assert!(r.calls.borrow().iter().all(|c| !c.contains(" -d ") && !c.contains("-l -q")));
         // Still undetected, so the pill says "No reading yet", not "Install Claude Code".
         assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::NoData);
@@ -317,10 +370,10 @@ mod tests {
         };
         let s = AppState::new(settings, std::env::temp_dir().join("notch-app-state-unused.json"));
         s.try_start_refresh();
-        s.finish_refresh(Some(reading(40.0)));
+        s.finish_refresh(Fetched::Reading(reading(40.0)));
         s.try_start_refresh();
-        assert!(fetch(&s, &r).is_none());
-        s.finish_refresh(None);
+        assert!(matches!(fetch(&s, &r), Fetched::Failed));
+        s.finish_refresh(Fetched::Failed);
         assert!(r.calls.borrow().iter().all(|c| !c.contains(" -d ")));
         let vm = s.view(Local::now(), None);
         assert_eq!(vm.pill, crate::view::PillState::Stale);
@@ -344,7 +397,7 @@ mod tests {
         let s = AppState::new(Settings::default(), dir.join("settings.json"));
         assert!(s.try_start_refresh());
         s.save_settings(Settings { source: SourcePref::Windows, ..Settings::default() }).unwrap();
-        s.finish_refresh(None);
+        s.finish_refresh(Fetched::Failed);
         assert!(s.take_refresh_again());
         assert!(!s.take_refresh_again());
         // With nothing running, the caller's own refresh_now handles it.
