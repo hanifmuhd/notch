@@ -77,6 +77,9 @@ button { font: inherit; color: inherit; }
 .ear__count { color: var(--ink-muted); font-weight: 600; }
 .ear__muted { color: var(--ink-muted); font-weight: 600; }
 .ear__flash { font-weight: 700; }
+.ear--right:empty { display: none; } /* no gap for nothing, e.g. during a banner */
+.ear__flash.is-prayer { overflow: hidden; text-overflow: ellipsis; }
+.icon.is-prayer { color: var(--week); }
 .ear__bell { display: inline-flex; align-items: center; gap: 4px; color: var(--alert); }
 .pill.is-quiet { justify-content: center; }
 .icon { width: 14px; height: 14px; flex: none; }
@@ -140,6 +143,23 @@ button { font: inherit; color: inherit; }
 .line__pct.is-full { color: var(--danger); }
 .line__when { margin-left: auto; color: var(--ink-muted); }
 .runs { margin: 0; font-size: 12px; color: var(--alert); }
+
+/* prayer times (prayer spec 5.2): the next prayer, a line since the previous one, today's five */
+.prayer { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.prayer[hidden], #prayer-body[hidden] { display: none; }
+.prayer__title { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--ink-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prayer__off { margin: 0; font-size: 12px; color: var(--ink-muted); }
+.prayer__next { display: flex; align-items: baseline; gap: 8px; margin: 0; }
+.prayer__name, .prayer__time { font-size: 20px; font-weight: 700; line-height: 1.2; letter-spacing: -.01em; }
+.prayer__time { color: var(--week); }
+.prayer__in { margin-left: auto; font-size: 12.5px; color: var(--ink-muted); }
+.prayer__bar { height: 3px; margin: 8px 0 10px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.prayer__bar i { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--week); transition: width 600ms var(--out); }
+.prayer__times { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 0; list-style: none; text-align: center; }
+.prayer__times li { display: flex; flex-direction: column; font-size: 11px; color: var(--ink-muted); }
+.prayer__times b { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.prayer__times .is-past, .prayer__times .is-past b { color: #f3f1ee80; }
+.prayer__times .is-next, .prayer__times .is-next b { color: var(--week); }
 
 /* sessions */
 .sessions { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
@@ -239,7 +259,7 @@ button { font: inherit; color: inherit; }
 .segmented input:checked + span { color: var(--black); background: var(--cream); font-weight: 700; }
 .segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
 .check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 12.5px; cursor: pointer; }
-.check[hidden], .setting[hidden] { display: none; }
+.check[hidden], .setting[hidden], .setting__row[hidden] { display: none; }
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--week); cursor: pointer; }
 .check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .range { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 30px; margin: 0; background: transparent; cursor: pointer; }
@@ -257,7 +277,7 @@ button { font: inherit; color: inherit; }
   .pod { animation: none; transition: opacity 120ms linear; }
   .notch.is-open .pod { transform: none; }
   .notch.is-needs .pill, .notch.is-needs .panel { animation: none; box-shadow: 0 0 0 1.5px var(--alert); }
-  .ring__arc { transition: none; }
+  .ring__arc, .prayer__bar i { transition: none; }
   .icon-btn:active { transform: none; }
   .icon-btn[aria-busy="true"] svg { animation: none; }
 }

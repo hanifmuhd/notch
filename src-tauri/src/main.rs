@@ -123,6 +123,9 @@ fn emit_flash(app: &AppHandle, announce: Option<String>, flash: Option<String>) 
 /// The one place a view goes out: `flash` (session notice) and `banner` (prayer) are set only on
 /// the emit that carries them.
 fn emit_with(app: &AppHandle, announce: Option<String>, flash: Option<String>, banner: Option<view::Banner>) -> ViewModel {
+    if let Some(b) = &banner {
+        *LAST_BANNER.lock().unwrap_or_else(|e| e.into_inner()) = Some((b.clone(), std::time::Instant::now()));
+    }
     let mut vm = app.state::<AppState>().view(Local::now(), announce);
     vm.flash = flash;
     vm.banner = banner;
@@ -162,10 +165,21 @@ fn refresh(app: &AppHandle) {
     }
 }
 
+/// The last prayer banner and when it went out: an alert due at start-up fires before the page
+/// listens, so the page's first get_view picks it up instead.
+static LAST_BANNER: Mutex<Option<(view::Banner, std::time::Instant)>> = Mutex::new(None);
+
+/// The banner with the seconds it has left, or None once it is over.
+fn still_showing(b: &view::Banner, elapsed: Duration) -> Option<view::Banner> {
+    let left = u64::from(b.seconds).checked_sub(elapsed.as_secs()).filter(|&l| l > 0)?;
+    Some(view::Banner { seconds: left as u32, ..b.clone() })
+}
+
 #[tauri::command]
 fn get_view(state: State<AppState>) -> ViewModel {
     let mut vm = state.view(Local::now(), None);
     vm.mode = mode().0.name();
+    vm.banner = LAST_BANNER.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|(b, at)| still_showing(b, at.elapsed()));
     vm
 }
 
@@ -797,7 +811,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{due, prayer, prayer_texts};
+    use super::{due, prayer, prayer_texts, still_showing, view};
     use chrono::{Duration, Utc};
 
     #[test]
@@ -820,5 +834,13 @@ mod tests {
         let (title, b) = prayer_texts(&prayer::Alert::Remind(prayer::Prayer::Maghrib, t, 10));
         assert_eq!(title, "Maghrib in 10 min");
         assert_eq!((b.text.as_str(), b.seconds), ("Maghrib in 10 min · 18:58", 20));
+    }
+
+    #[test]
+    fn banner_fired_before_the_page_listens_is_still_shown() {
+        let b = view::Banner { text: "Subuh in 10 min · 05:48".into(), short: "Subuh · 05:48".into(), seconds: 20 };
+        assert_eq!(still_showing(&b, std::time::Duration::from_millis(2500)).map(|x| x.seconds), Some(18));
+        assert_eq!(still_showing(&b, std::time::Duration::from_secs(19)).map(|x| x.seconds), Some(1));
+        assert!(still_showing(&b, std::time::Duration::from_secs(20)).is_none());
     }
 }

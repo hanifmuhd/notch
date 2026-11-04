@@ -67,7 +67,7 @@ function ring(vm, size, big = false) {
 // ---------- state ----------
 
 let lastVm = null;
-let flashText = null;
+let flash = null; // { text, icon, prayer }: a session notice or a prayer banner shown in the closed notch
 let flashTimer;
 let tasksOn = null; // task alerts switch, read lazily (it may take seconds over WSL)
 
@@ -86,9 +86,11 @@ function renderPill(vm) {
   const left = el('span', 'ear ear--left');
   const right = el('span', 'ear ear--right');
   if (vm.mode === 'taskbar_mini') {
-    left.append(ring(vm, 20)); // tight taskbar: rings only, the label below still says it all
-  } else if (flashText) {
-    left.append(icon('i-bell', 'icon is-alert'), el('span', 'ear__flash', flashText));
+    // tight taskbar: rings only (a moon during a prayer banner); the label below still says it all
+    left.append(flash && flash.prayer ? icon('i-moon', 'icon is-prayer') : ring(vm, 20));
+  } else if (flash) {
+    const text = flash.prayer && vm.mode !== 'top' ? flash.short : flash.text; // the capsule is capped at 150 px
+    left.append(icon(flash.icon, flash.prayer ? 'icon is-prayer' : 'icon is-alert'), el('span', 'ear__flash' + (flash.prayer ? ' is-prayer' : ''), text));
   } else if (!hasNumbers(vm)) {
     const msg = vm.pill === 'no_claude' ? 'Install Claude Code to see your limits'
       : vm.pill === 'logged_out' ? 'Log in to Claude Code' : vm.refreshing ? 'Updating…' : 'Claude usage';
@@ -107,9 +109,9 @@ function renderPill(vm) {
     }
   }
   pill.replaceChildren(left, right);
-  pill.classList.toggle('is-quiet', !flashText && (!hasNumbers(vm) || vm.pill === 'stale'));
+  pill.classList.toggle('is-quiet', !flash && (!hasNumbers(vm) || vm.pill === 'stale'));
   // Screen readers get the whole closed state in one label.
-  pill.setAttribute('aria-label', flashText || (hasNumbers(vm)
+  pill.setAttribute('aria-label', (flash && flash.text) || (hasNumbers(vm)
     ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}`
     : left.textContent));
 }
@@ -119,7 +121,7 @@ function renderPill(vm) {
 function renderPod(vm) {
   const p = vm.pod;
   // No pod in the taskbar: it would grow over app icons (the capsule's bell and glow say it).
-  pod.hidden = !p || flashText != null || (vm.mode || 'top') !== 'top';
+  pod.hidden = !p || flash != null || (vm.mode || 'top') !== 'top';
   notch.classList.toggle('is-needs', !!p && p.status === 'needs_you');
   if (!p) return;
   const needs = p.status === 'needs_you';
@@ -172,6 +174,26 @@ function renderSessions(vm) {
   }));
 }
 
+function renderPrayer(vm) {
+  const p = vm.prayer;
+  $('#prayer').hidden = !p;
+  if (!p) return;
+  $('#prayer-title').textContent = `Prayer · ${p.place}`;
+  $('#prayer-off').hidden = !p.unavailable;
+  $('#prayer-body').hidden = p.unavailable;
+  if (p.unavailable) return;
+  $('#prayer-name').textContent = p.next_name;
+  $('#prayer-time').textContent = p.next_time;
+  $('#prayer-in').textContent = p.next_in;
+  $('#prayer-bar').style.width = p.progress_pct + '%';
+  $('#prayer-times').replaceChildren(...p.times.map(([name, time, state]) => {
+    const li = el('li', 'is-' + state, name);
+    li.append(el('b', null, time));
+    if (state === 'next') li.setAttribute('aria-current', 'time');
+    return li;
+  }));
+}
+
 function render(vm) {
   lastVm = vm;
   notch.dataset.mode = vm.mode || 'top';
@@ -187,6 +209,7 @@ function render(vm) {
   $('#runs').textContent = vm.session.runs_out_text || '';
   $('#runs').hidden = !show || !vm.session.runs_out_text;
   $('#notice').hidden = vm.pill !== 'no_claude';
+  renderPrayer(vm);
   renderSessions(vm);
   $('#updated').textContent = vm.refreshing ? 'Updating…' : vm.pill === 'no_claude' ? '' : vm.updated_text;
   const refresh = $('#refresh');
@@ -334,9 +357,14 @@ let settings = null;
 let distros = [];
 const screenSel = $('#s-screen');
 const sourceSel = $('#s-source');
+const zoneSel = $('#s-zone');
+let zones = [];
+// JAKIM zone codes start with the state's code.
+const STATES = { JHR: 'Johor', KDH: 'Kedah', KTN: 'Kelantan', MLK: 'Melaka', NGS: 'Negeri Sembilan', PHG: 'Pahang',
+  PLS: 'Perlis', PNG: 'Pulau Pinang', PRK: 'Perak', SBH: 'Sabah', SGR: 'Selangor', SWK: 'Sarawak', TRG: 'Terengganu', WLY: 'Wilayah Persekutuan' };
 const MENU_KEYS = [' ', 'Enter', 'F4'];
 
-for (const sel of [screenSel, sourceSel]) {
+for (const sel of [screenSel, sourceSel, zoneSel]) {
   sel.addEventListener('pointerdown', () => { menuOpen = true; });
   sel.addEventListener('keydown', (e) => {
     if (MENU_KEYS.includes(e.key) || (e.altKey && e.key === 'ArrowDown')) menuOpen = true;
@@ -375,6 +403,23 @@ function renderSettings(screens) {
   $('#s-start-wsl').checked = settings.start_wsl;
   $('#s-start-wsl-row').hidden = settings.source.kind !== 'wsl';
   $('#s-task-finished').checked = settings.task_finished;
+  $('#s-prayer-on').checked = settings.prayer_on;
+  for (const row of document.querySelectorAll('[data-prayer-only]')) row.hidden = !settings.prayer_on;
+  for (const r of document.querySelectorAll('input[name="prayer_remind"]')) r.checked = Number(r.value) === settings.prayer_remind;
+  if (zones.length && zoneSel.options.length === 0) {
+    const groups = new Map();
+    for (const [code, place] of zones) {
+      const state = STATES[code.slice(0, 3)] || code.slice(0, 3);
+      if (!groups.has(state)) groups.set(state, el('optgroup'));
+      const g = groups.get(state);
+      g.label = state;
+      const o = el('option', null, `${code} · ${place}`);
+      o.value = code;
+      g.append(o);
+    }
+    zoneSel.replaceChildren(...groups.values());
+  }
+  zoneSel.value = settings.prayer_zone;
   for (const key of ['session', 'week']) {
     $(`#t-${key}`).value = settings[key + '_threshold'];
     $(`[data-out="${key}"]`).textContent = settings[key + '_threshold'] + '%';
@@ -404,6 +449,11 @@ sourceSel.addEventListener('change', () => {
 });
 $('#s-start-wsl').addEventListener('change', (e) => save({ start_wsl: e.target.checked }));
 $('#s-task-finished').addEventListener('change', (e) => save({ task_finished: e.target.checked }));
+$('#s-prayer-on').addEventListener('change', (e) => save({ prayer_on: e.target.checked }));
+zoneSel.addEventListener('change', () => save({ prayer_zone: zoneSel.value }));
+for (const r of document.querySelectorAll('input[name="prayer_remind"]')) {
+  r.addEventListener('change', () => save({ prayer_remind: Number(r.value) }));
+}
 $('#s-stay-behind').addEventListener('change', (e) => save({ stay_behind: e.target.checked }));
 for (const r of document.querySelectorAll('input[name="show_in"]')) {
   r.addEventListener('change', () => save({ show_in: r.value }));
@@ -446,16 +496,23 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
 
 // ---------- start ----------
 
+/** A prayer banner or a session notice to show in the closed notch for a while. */
+function takeFlash(vm) {
+  const b = vm.banner;
+  const next = b ? { text: b.text, short: b.short, icon: 'i-moon', prayer: true, ms: b.seconds * 1000 }
+    : vm.flash ? { text: vm.flash, icon: 'i-bell', ms: FLASH_MS } : null;
+  if (!next) return;
+  flash = next;
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { flash = null; if (lastVm) render(lastVm); }, next.ms);
+}
+
 (async () => {
   // The shape is measured for hit-testing, so the font must be loaded first.
   await Promise.all([500, 600, 700].map((w) => document.fonts.load(`${w} 14px "Manrope"`))).catch(() => {});
   // Listen before the first fetch, so a refresh that finishes meanwhile is neither missed nor its announcement lost.
   await listen('usage-updated', (e) => {
-    if (e.payload.flash) {
-      flashText = e.payload.flash; // the same text arrives in `announce`, so it is spoken once
-      clearTimeout(flashTimer);
-      flashTimer = setTimeout(() => { flashText = null; if (lastVm) render(lastVm); }, FLASH_MS);
-    }
+    takeFlash(e.payload); // the same text arrives in `announce`, so it is spoken once
     render(e.payload);
     if (e.payload.announce) announce(e.payload.announce);
   });
@@ -471,8 +528,12 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
     renderSettings();
   });
   const vm = await call('get_view');
-  if (vm) render(vm);
-  const [s, screens] = await Promise.all([call('get_settings'), call('list_screens')]);
+  if (vm) {
+    takeFlash(vm); // a prayer banner that fired before we listened
+    render(vm);
+  }
+  const [s, screens, z] = await Promise.all([call('get_settings'), call('list_screens'), call('get_zones')]);
+  zones = z || [];
   if (s) {
     settings = s;
     renderSettings(screens || []);

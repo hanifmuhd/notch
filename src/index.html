@@ -13,6 +13,7 @@
   <symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
     <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></symbol>
     <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
     <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
 </svg>
@@ -35,6 +36,15 @@
         <div class="line" data-line="week"><i class="line__dot is-week"></i><span class="line__name">Week</span><span class="line__pct"></span><span class="line__when"></span></div>
         <p class="runs" id="runs" hidden></p>
       </div>
+      <section class="prayer" id="prayer" aria-labelledby="prayer-title" hidden>
+        <h2 class="prayer__title" id="prayer-title"></h2>
+        <p class="prayer__off" id="prayer-off" hidden>Prayer times unavailable — will retry</p>
+        <div id="prayer-body">
+          <p class="prayer__next"><span class="prayer__name" id="prayer-name"></span><span class="prayer__time" id="prayer-time"></span><span class="prayer__in" id="prayer-in"></span></p>
+          <div class="prayer__bar" aria-hidden="true"><i id="prayer-bar"></i></div>
+          <ol class="prayer__times" id="prayer-times"></ol>
+        </div>
+      </section>
       <div class="sessions" id="sessions" hidden>
         <h2 class="sessions__title">Sessions</h2>
         <ul class="sessions__list" id="session-list"></ul>
@@ -82,6 +92,23 @@
         <label class="check"><input type="checkbox" role="switch" id="s-task-alerts" disabled><span>Show when Claude needs you</span></label>
         <p class="setting__hint" id="s-task-hint" hidden></p>
         <label class="check"><input type="checkbox" id="s-task-finished"><span>Also when a task finishes</span></label>
+      </div>
+      <div class="setting" role="group" aria-labelledby="s-prayer-label">
+        <span class="setting__group" id="s-prayer-label">Prayer</span>
+        <label class="check"><input type="checkbox" role="switch" id="s-prayer-on"><span>Prayer times</span></label>
+        <div class="setting__row" data-prayer-only>
+          <label for="s-zone">Zone</label>
+          <select class="select" id="s-zone"></select>
+        </div>
+        <div class="setting__row" data-prayer-only>
+          <span id="s-remind-label">Remind before</span>
+          <span class="segmented" role="radiogroup" aria-labelledby="s-remind-label">
+            <label><input type="radio" name="prayer_remind" value="0"><span>Off</span></label>
+            <label><input type="radio" name="prayer_remind" value="5"><span>5m<span class="sr-only">inutes</span></span></label>
+            <label><input type="radio" name="prayer_remind" value="10"><span>10m<span class="sr-only">inutes</span></span></label>
+            <label><input type="radio" name="prayer_remind" value="15"><span>15m<span class="sr-only">inutes</span></span></label>
+          </span>
+        </div>
       </div>
       <div class="setting">
         <div class="setting__head"><label for="t-session">Session alert at</label><output class="setting__value" for="t-session" data-out="session">90%</output></div>
