@@ -18,27 +18,27 @@
 </svg>
 
 <div class="notch" id="notch">
-  <button class="pill is-stale" type="button" aria-expanded="false" aria-controls="panel" id="pill">
-    <span class="stat__label">Claude usage</span>
+  <button class="pill" type="button" aria-expanded="false" aria-controls="panel" id="pill">
+    <span class="ear ear--left"><span class="ear__muted">Claude usage</span></span><span class="ear ear--right"></span>
   </button>
+  <button class="pod" type="button" id="pod" hidden aria-label="Open the session list"></button>
   <div class="panel" id="panel" role="region" aria-label="Claude usage">
+   <div class="panel__inner" id="panel-inner">
     <div data-view="usage">
       <p class="notice" id="notice" hidden><button class="link-btn" type="button" id="install">Install Claude Code to see your limits</button></p>
-      <div class="limit" data-limit="session">
-        <div class="limit__head"><span class="limit__name">Session, 5 hours</span><span class="limit__value" data-f="value"></span></div>
-        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Session" data-f="meter"><div class="meter__fill" data-f="fill"></div><div class="meter__pace" data-f="pace"></div></div>
-        <div class="limit__foot"><span data-f="reset"></span><span class="pace-key" data-f="pace-text"></span></div>
-        <p class="limit__runs" data-f="runs" hidden></p>
+      <div class="dial" id="dial-wrap" role="img" aria-label="Claude usage">
+        <div class="dial__ring" id="dial"></div>
+        <div class="dial__mid"><span class="dial__pct" id="dial-pct"></span><span class="dial__sub" id="dial-sub"></span></div>
       </div>
-      <div class="limit" data-limit="week">
-        <div class="limit__head"><span class="limit__name">Week, 7 days</span><span class="limit__value" data-f="value"></span></div>
-        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Week" data-f="meter"><div class="meter__fill" data-f="fill"></div><div class="meter__pace" data-f="pace"></div></div>
-        <div class="limit__foot"><span data-f="reset"></span><span class="pace-key" data-f="pace-text"></span></div>
-        <p class="limit__runs" data-f="runs" hidden></p>
+      <div class="lines" id="lines">
+        <div class="line" data-line="session"><i class="line__dot is-session"></i><span class="line__name">Session</span><span class="line__pct"></span><span class="line__when"></span></div>
+        <div class="line" data-line="week"><i class="line__dot is-week"></i><span class="line__name">Week</span><span class="line__pct"></span><span class="line__when"></span></div>
+        <p class="runs" id="runs" hidden></p>
       </div>
       <div class="sessions" id="sessions" hidden>
         <h2 class="sessions__title">Sessions</h2>
         <ul class="sessions__list" id="session-list"></ul>
+        <p class="sessions__off" id="sessions-off" hidden>Turn on Task alerts to see sessions</p>
       </div>
       <div class="panel__foot"><span id="updated"></span>
         <span class="panel__actions">
@@ -85,6 +85,7 @@
       </div>
       <p class="setting__hint">Saved as you change it. Full always alerts at 100%.</p>
     </div>
+   </div>
   </div>
 </div>
 <p class="sr-only" role="status" aria-atomic="true" id="announce"></p>

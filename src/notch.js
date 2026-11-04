@@ -1,4 +1,5 @@
-// Renders the usage ViewModel from Rust (view.rs) and drives the panel and settings (spec 5.2-5.4, 5.7).
+// Renders the usage ViewModel from Rust (view.rs) and drives the notch, panel and settings
+// (redesign spec 5.1-5.4). Rust computes every text; this file draws rings and moves the shape.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
 
@@ -6,14 +7,17 @@ const $ = (sel) => document.querySelector(sel);
 const notch = $('#notch');
 const pill = $('#pill');
 const panel = $('#panel');
+const pod = $('#pod');
 const views = { usage: $('[data-view="usage"]'), settings: $('[data-view="settings"]') };
-const LEVEL_CLASS = { normal: '', alert: 'is-warn', full: 'is-danger' };
-const CLOSE_DELAY = 150; // hover-out grace (spec 5.2)
-const FADE_OUT = 120; // matches the panel's closing transition
+const HOVER_INTENT = 300; // the pointer must rest this long before hover opens (spec 5.2)
+const CLOSE_DELAY = 150; // hover-out grace
+const MORPH = 500; // matches the size spring in notch.css
+const FLASH_MS = 6000; // a new session notice shows in the notch this long
 
 const call = (cmd, args) => invoke(cmd, args).catch((e) => console.error(cmd, e));
+const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-// ---------- rendering ----------
+// ---------- small builders ----------
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -22,91 +26,50 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-const stat = (label, value, cls = '') => {
-  const s = el('span', 'stat');
-  s.append(el('span', 'stat__label', label), el('span', ('stat__value ' + cls).trim(), value));
+const SVG = 'http://www.w3.org/2000/svg';
+const svgEl = (tag, attrs) => {
+  const n = document.createElementNS(SVG, tag);
+  for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+  return n;
+};
+
+const icon = (id, cls = 'icon') => {
+  const s = svgEl('svg', { class: cls, 'aria-hidden': 'true' });
+  s.append(svgEl('use', { href: '#' + id }));
   return s;
 };
 
-const alertIcon = (cls) => {
-  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svg.setAttribute('class', 'icon ' + cls);
-  svg.setAttribute('aria-hidden', 'true');
-  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', '#i-alert');
-  svg.append(use);
-  return svg;
-};
+/**
+ * The double ring: session outside, week inside (spec 5.1). `size` in px; percentages 0-100.
+ * The outer ring turns amber at the alert level and solid red when full.
+ */
+function ring(vm, size, big = false) {
+  // The dial keeps a wide centre for its text; the small ring is bolder so it reads at 20 px.
+  const [ro, ri] = big ? [10.6, 8.5] : [9.6, 5.2];
+  const s = svgEl('svg', { width: size, height: size, viewBox: '0 0 24 24', class: 'ring', 'aria-hidden': 'true' });
+  const arc = (r, pct, cls) => {
+    const c = 2 * Math.PI * r;
+    s.append(svgEl('circle', { cx: 12, cy: 12, r, class: 'ring__track' }));
+    if (pct > 0) {
+      s.append(svgEl('circle', {
+        cx: 12, cy: 12, r, class: 'ring__arc ' + cls,
+        'stroke-dasharray': `${(Math.min(pct, 100) / 100) * c} ${c}`,
+        transform: 'rotate(-90 12 12)',
+      }));
+    }
+  };
+  const lvl = vm.session.level;
+  arc(ro, lvl === 'full' ? 100 : vm.session.used_pct, lvl === 'full' ? 'is-full' : lvl === 'alert' ? 'is-alert' : 'is-session');
+  arc(ri, vm.week.used_pct, vm.week.level === 'full' ? 'is-full' : vm.week.level === 'alert' ? 'is-alert' : 'is-week');
+  return s;
+}
 
-/** "Session full, back in 1h 20m" -> ["Session full, back in", "1h 20m"]. */
-const splitFull = (text) => {
-  const m = /^(.*? back(?: in)?) (.+)$/.exec(text);
-  return m ? [m[1], m[2]] : [text, ''];
-};
+// ---------- state ----------
 
-const bellIcon = () => {
-  const svg = alertIcon('');
-  svg.querySelector('use').setAttribute('href', '#i-bell');
-  return svg;
-};
-
-// A new session notice replaces the pill's content for 6 s (spec 5.3); a newer one restarts it.
-const FLASH_MS = 6000;
+let lastVm = null;
 let flashText = null;
 let flashTimer;
-let lastVm = null;
-
-function renderPill(vm) {
-  const parts = [];
-  if (flashText) {
-    parts.push(el('span', 'stat__value', flashText));
-  } else if (vm.pill === 'no_claude') {
-    parts.push(el('span', 'stat__label', 'Install Claude Code to see your limits'));
-  } else if (vm.pill === 'logged_out') {
-    parts.push(el('span', 'stat__label', 'Log in to Claude Code'));
-  } else if (vm.pill === 'no_data' && vm.refreshing) {
-    parts.push(el('span', 'stat__label', 'Updating…'));
-  } else {
-    if (vm.pill === 'alert' || vm.pill === 'full') parts.push(alertIcon(vm.pill === 'full' ? 'is-danger' : 'is-warn'));
-    const fullKey = vm.pill === 'full' ? (vm.session.level === 'full' ? 'session' : 'week') : null;
-    for (const [key, name] of [['session', 'Session'], ['week', 'Week']]) {
-      if (key === fullKey) {
-        const [label, value] = splitFull(vm.pill_text || '');
-        parts.push(stat(label, value, 'is-danger'));
-      } else {
-        parts.push(stat(name, vm[key].value_text, LEVEL_CLASS[vm[key].level]));
-      }
-    }
-    if (vm.pill === 'stale') parts.push(stat('As of', vm.updated_text.replace(/^As of /, '')));
-  }
-  if (!flashText && vm.attention > 0) {
-    const s = stat('', String(vm.attention));
-    s.firstChild.replaceWith(bellIcon());
-    s.append(el('span', 'sr-only', vm.attention === 1 ? ' session needs a look' : ' sessions need a look'));
-    parts.push(s);
-  }
-  pill.replaceChildren(...parts);
-  pill.classList.toggle('is-stale', ['stale', 'no_data', 'no_claude', 'logged_out'].includes(vm.pill));
-}
-
-function renderLimit(key, lv) {
-  const root = $(`[data-limit="${key}"]`);
-  const f = (name) => root.querySelector(`[data-f="${name}"]`);
-  const cls = LEVEL_CLASS[lv.level];
-  const hasData = lv.value_text !== '–'; // an idle limit has a reading but no pace
-  f('value').textContent = lv.value_text;
-  f('value').className = ('limit__value ' + cls).trim();
-  f('fill').className = ('meter__fill ' + cls).trim();
-  f('fill').style.width = lv.used_pct + '%';
-  f('pace').hidden = lv.pace_text === '';
-  f('pace').style.left = lv.pace_pct + '%';
-  f('meter').setAttribute('aria-valuenow', String(Math.round(lv.used_pct)));
-  f('meter').setAttribute('aria-valuetext', hasData ? `${lv.value_text} used, ${lv.pace_text || lv.reset_text}` : 'No reading yet');
-  f('reset').textContent = lv.reset_text;
-  f('pace-text').textContent = lv.pace_text;
-  f('runs').textContent = lv.runs_out_text || '';
-  f('runs').hidden = !lv.runs_out_text;
-}
+let tasksOn = null; // task alerts switch, read lazily (it may take seconds over WSL)
 
 /** "now" under a minute, then "2m", then "1h". */
 const ageText = (sinceMs) => {
@@ -114,15 +77,92 @@ const ageText = (sinceMs) => {
   return mins < 1 ? 'now' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`;
 };
 
+const LEVEL = { normal: '', alert: 'is-alert', full: 'is-full' };
+const hasNumbers = (vm) => !['no_claude', 'logged_out', 'no_data'].includes(vm.pill);
+
+// ---------- closed notch: rings and % on the left ear, countdown on the right ----------
+
+function renderPill(vm) {
+  const left = el('span', 'ear ear--left');
+  const right = el('span', 'ear ear--right');
+  if (flashText) {
+    left.append(icon('i-bell', 'icon is-alert'), el('span', 'ear__flash', flashText));
+  } else if (!hasNumbers(vm)) {
+    const msg = vm.pill === 'no_claude' ? 'Install Claude Code to see your limits'
+      : vm.pill === 'logged_out' ? 'Log in to Claude Code' : vm.refreshing ? 'Updating…' : 'Claude usage';
+    left.append(el('span', 'ear__muted', msg));
+  } else {
+    const s = vm.session;
+    left.append(ring(vm, 20), el('span', 'ear__pct ' + LEVEL[s.level], s.value_text));
+    if (vm.pill === 'full' && vm.pill_text) right.append(el('span', 'ear__count is-full', vm.pill_text));
+    else if (vm.pill === 'stale') right.append(el('span', 'ear__muted', vm.updated_text.replace(/^As of /, 'as of ')));
+    else right.append(el('span', 'ear__count', s.countdown_text));
+    if (vm.attention > 0) {
+      const b = el('span', 'ear__bell');
+      b.append(icon('i-bell'), el('span', null, String(vm.attention)),
+        el('span', 'sr-only', vm.attention === 1 ? ' session needs a look' : ' sessions need a look'));
+      right.append(b);
+    }
+  }
+  pill.replaceChildren(left, right);
+  pill.classList.toggle('is-quiet', !flashText && (!hasNumbers(vm) || vm.pill === 'stale'));
+  // Screen readers get the whole closed state in one label.
+  pill.setAttribute('aria-label', flashText || (hasNumbers(vm)
+    ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}`
+    : left.textContent));
+}
+
+// ---------- the pod: the session that is working or needs you (spec 5.4) ----------
+
+function renderPod(vm) {
+  const p = vm.pod;
+  pod.hidden = !p || flashText != null;
+  notch.classList.toggle('is-needs', !!p && p.status === 'needs_you');
+  if (!p) return;
+  const needs = p.status === 'needs_you';
+  pod.replaceChildren(
+    needs ? icon('i-bell', 'icon is-alert') : el('span', 'pod__spin'),
+    el('span', 'pod__project', p.project || 'Claude'),
+    el('span', 'pod__state ' + (needs ? 'is-alert' : 'is-working'), needs ? 'needs you' : 'working'),
+    el('span', 'pod__age', ageText(p.since_ms)),
+    ...(p.more > 0 ? [el('span', 'pod__more', `+${p.more}`)] : []),
+  );
+}
+
+// ---------- open panel ----------
+
+function renderDial(vm) {
+  const dial = $('#dial');
+  const show = hasNumbers(vm);
+  $('#dial-wrap').hidden = !show;
+  if (!show) return;
+  dial.replaceChildren(ring(vm, 136, true));
+  $('#dial-pct').textContent = vm.session.value_text;
+  $('#dial-pct').className = 'dial__pct ' + LEVEL[vm.session.level];
+  const c = vm.session.countdown_text;
+  $('#dial-sub').textContent = vm.pill === 'full' ? (vm.pill_text || '') : c === 'ready' ? 'ready' : c === 'now' ? 'resets now' : `resets in ${c}`;
+  $('#dial-wrap').setAttribute('aria-label',
+    `Session ${vm.session.value_text} used, ${vm.session.reset_text}. Week ${vm.week.value_text} used, ${vm.week.reset_text}.`);
+}
+
+function renderLine(key, lv) {
+  const row = $(`[data-line="${key}"]`);
+  row.querySelector('.line__pct').textContent = lv.value_text;
+  row.querySelector('.line__pct').className = 'line__pct ' + LEVEL[lv.level];
+  row.querySelector('.line__when').textContent = lv.span_text || lv.reset_text;
+}
+
 function renderSessions(vm) {
   const rows = vm.sessions || [];
-  $('#sessions').hidden = rows.length === 0;
+  const off = tasksOn === false;
+  $('#sessions').hidden = rows.length === 0 && !off;
+  $('#sessions-off').hidden = !off || rows.length > 0;
   $('#session-list').replaceChildren(...rows.map((r) => {
     const li = el('li', 'session');
-    const needs = r.status === 'needs_you';
+    const label = { needs_you: 'needs you', working: 'working', finished: 'finished' }[r.status] || r.status;
     li.append(
       el('span', 'session__project', r.project || 'Claude'),
-      el('span', 'session__status' + (needs ? ' is-warn' : ''), needs ? 'needs you' : 'finished'),
+      el('span', 'session__status is-' + r.status.replace('_', '-'), label),
       el('span', 'session__age', ageText(r.since_ms)),
     );
     return li;
@@ -132,21 +172,25 @@ function renderSessions(vm) {
 function render(vm) {
   lastVm = vm;
   renderPill(vm);
-  renderSessions(vm);
-  reportHits();
-  const noClaude = vm.pill === 'no_claude';
-  // Logged out hides the old numbers too; the footer text carries the log-in hint.
-  const hideLimits = noClaude || vm.pill === 'logged_out';
-  $('#notice').hidden = !noClaude;
-  for (const key of ['session', 'week']) {
-    $(`[data-limit="${key}"]`).hidden = hideLimits;
-    renderLimit(key, vm[key]);
+  renderPod(vm);
+  renderDial(vm);
+  const show = hasNumbers(vm);
+  $('#lines').hidden = !show;
+  if (show) {
+    renderLine('session', vm.session);
+    renderLine('week', vm.week);
   }
-  $('#updated').textContent = vm.refreshing ? 'Updating…' : noClaude ? '' : vm.updated_text;
+  $('#runs').textContent = vm.session.runs_out_text || '';
+  $('#runs').hidden = !show || !vm.session.runs_out_text;
+  $('#notice').hidden = vm.pill !== 'no_claude';
+  renderSessions(vm);
+  $('#updated').textContent = vm.refreshing ? 'Updating…' : vm.pill === 'no_claude' ? '' : vm.updated_text;
   const refresh = $('#refresh');
   refresh.setAttribute('aria-label', vm.refreshing ? 'Refreshing' : 'Refresh now');
   if (vm.refreshing) refresh.setAttribute('aria-busy', 'true');
   else refresh.removeAttribute('aria-busy');
+  fitPanel();
+  reportHits();
 }
 
 // Only the usage-updated event may speak; get_view and save_settings also carry `announce`.
@@ -156,29 +200,40 @@ function announce(text) {
   requestAnimationFrame(() => { live.textContent = text; });
 }
 
-// ---------- open / close ----------
+// ---------- open / close: one black shape that grows (spec 5.1, 5.2) ----------
 
 let isOpen = false;
 let pinned = false;
 let menuOpen = false; // a native <select> popup is showing; it can blur the page in WebView2
 let closeTimer;
-let fadeTimer;
-
-let closing = false;
+let hoverTimer;
+let settleTimer;
+let morphing = false;
 let ageTimer;
 
+// The panel grows from the pill's size to its content size; both are CSS variables so the
+// spring in notch.css animates width and height together.
+function fitPanel() {
+  notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
+  notch.style.setProperty('--panel-h', $('#panel-inner').scrollHeight + 'px');
+}
+
 // The window is a fixed size; only the visible shape takes the mouse (spec 4, approach A).
-// While the panel is open or animating, its full-size box counts, so a spring never runs
+// While the shape is open or morphing, its full open box counts, so the spring never runs
 // past the area that takes clicks.
 let sentHits = '';
 function reportHits() {
   const box = (r) => ({ x: Math.floor(r.left), y: Math.floor(r.top), w: Math.ceil(r.width) + 1, h: Math.ceil(r.height) + 1 });
   const rects = [box(pill.getBoundingClientRect())];
-  if (isOpen || closing) {
-    const r = panel.getBoundingClientRect(); // may be scaled mid-animation: use its layout size
-    const cx = r.left + r.width / 2;
-    rects.push(box({ left: cx - panel.offsetWidth / 2, top: 0, width: panel.offsetWidth, height: panel.offsetHeight }));
+  if (isOpen || morphing) {
+    const r = panel.getBoundingClientRect();
+    const w = parseFloat(getComputedStyle(notch).getPropertyValue('--open-w')) || panel.offsetWidth;
+    const h = $('#panel-inner').scrollHeight;
+    const align = notch.dataset.align || 'centre';
+    const left = align === 'left' ? r.left : align === 'right' ? r.right - w : r.left + r.width / 2 - w / 2;
+    rects.push(box({ left, top: 0, width: w, height: Math.max(h, r.height) }));
   }
+  if (!pod.hidden && !isOpen) rects.push(box(pod.getBoundingClientRect()));
   const key = JSON.stringify(rects);
   if (key === sentHits) return;
   sentHits = key;
@@ -186,46 +241,65 @@ function reportHits() {
   call('set_hit_rects', { rects });
 }
 
-async function setOpen(open) {
+function setOpen(open) {
   clearTimeout(closeTimer);
+  clearTimeout(hoverTimer);
   if (open === isOpen) return;
   isOpen = open;
   pill.setAttribute('aria-expanded', String(open));
-  clearTimeout(fadeTimer);
-  closing = !open;
   clearInterval(ageTimer);
-  if (open) {
-    notch.classList.add('is-open');
+  clearTimeout(settleTimer);
+  morphing = true;
+  fitPanel();
+  notch.classList.toggle('is-open', open);
+  reportHits();
+  settleTimer = setTimeout(() => {
+    morphing = false;
+    if (!isOpen) showView('usage');
     reportHits();
-    ageTimer = setInterval(() => { if (lastVm) renderSessions(lastVm); }, 30000);
+  }, reduced() ? 150 : MORPH + 100);
+  if (open) {
+    ageTimer = setInterval(() => { if (lastVm) { renderSessions(lastVm); renderPod(lastVm); } }, 30000);
+    if (tasksOn === null) {
+      invoke('get_task_alerts').then((t) => { tasksOn = !!t.on; if (lastVm) render(lastVm); }).catch(() => {});
+    }
   } else {
-    notch.classList.remove('is-open');
     call('sessions_seen'); // closing after a look clears finished rows (spec 5.2)
-    fadeTimer = setTimeout(() => {
-      showView('usage');
-      closing = false;
-      reportHits();
-    }, FADE_OUT);
   }
+}
+
+/** Hover asks to open; it only happens if the pointer rests (spec 5.2: hover intent). */
+function hoverIn() {
+  clearTimeout(closeTimer);
+  if (isOpen) return;
+  clearTimeout(hoverTimer);
+  hoverTimer = setTimeout(() => setOpen(true), HOVER_INTENT);
+}
+
+function hoverOut() {
+  clearTimeout(hoverTimer);
+  if (!pinned && isOpen) { clearTimeout(closeTimer); closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY); }
 }
 
 function showView(name, focusEl) {
   for (const [k, v] of Object.entries(views)) v.hidden = k !== name;
+  fitPanel();
+  reportHits();
   if (focusEl) focusEl.focus();
 }
 
-// The settings view is taller than the usage view, and both change with data.
-new ResizeObserver(reportHits).observe(panel);
-new ResizeObserver(reportHits).observe(pill);
+// Content changes (settings view, sessions) change the panel height.
+new ResizeObserver(() => { fitPanel(); reportHits(); }).observe($('#panel-inner'));
+new ResizeObserver(() => { fitPanel(); reportHits(); }).observe(pill);
+new ResizeObserver(reportHits).observe(pod);
 window.addEventListener('resize', reportHits);
 
 pill.addEventListener('click', () => { pinned = !pinned; setOpen(pinned); });
 // Hover opens the panel over the pill, so a click inside it is the "opened by click" pin.
 panel.addEventListener('pointerdown', () => { pinned = true; });
-notch.addEventListener('mouseenter', () => setOpen(true));
-notch.addEventListener('mouseleave', () => {
-  if (!pinned) closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY);
-});
+notch.addEventListener('mouseenter', hoverIn);
+notch.addEventListener('mouseleave', hoverOut);
+pod.addEventListener('click', () => { pinned = true; setOpen(true); });
 // Clicking another window unpins, but not while a select's own popup takes the focus.
 window.addEventListener('blur', () => {
   if (pinned && !menuOpen) { pinned = false; setOpen(false); }
@@ -323,6 +397,7 @@ const taskSwitch = $('#s-task-alerts');
 const taskHint = $('#s-task-hint');
 
 function showTaskAlerts(t, error) {
+  if (t) tasksOn = !!t.on; // the panel's sessions hint follows the switch
   taskSwitch.checked = !!(t && t.on);
   taskSwitch.disabled = !(t && t.available);
   const hint = error || (t && t.hint) || '';
@@ -369,10 +444,7 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
   // Rust tells us when the pointer leaves the shape (input is then ignored, so no mouseleave).
   // It also says when the pointer arrives: a cursor that stops right after input is switched on
   // never sends mouseenter.
-  await listen('pointer', (e) => {
-    if (e.payload) setOpen(true);
-    else if (!pinned) { clearTimeout(closeTimer); closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY); }
-  });
+  await listen('pointer', (e) => { if (e.payload) hoverIn(); else hoverOut(); });
   // The tray can change show_notch; take the file's settings so the next save does not undo it.
   await listen('settings-changed', async () => {
     const s = await call('get_settings');
