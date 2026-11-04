@@ -1,0 +1,170 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap');
+.tb { font-family: Manrope, system-ui; color: #f3f1ee; --spring: cubic-bezier(.34,1.4,.55,1); --out: cubic-bezier(.2,.9,.1,1); }
+.n { font-variant-numeric: tabular-nums; }
+.trk { stroke: #ffffff24; } .s1 { stroke: #f3f1ee; } .s2 { stroke: #9fb8ff; }
+.why { margin: 0 0 12px; max-width: 76ch; font-family: system-ui; opacity: .9; }
+.screen { position: relative; height: 380px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #3d4a5c 0%, #27303d 55%, #1b2029 100%); margin-bottom: 8px; }
+.cap { position: absolute; left: 12px; top: 10px; font: 12px system-ui; color: #ffffffcc; }
+.ctl { position: absolute; right: 12px; top: 8px; display: flex; gap: 8px; }
+.ctl button { font: 12px system-ui; color: #fff; background: #ffffff24; border: 1px solid #ffffff40; border-radius: 6px; padding: 7px 11px; cursor: pointer; }
+.ctl button:focus-visible { outline: 2px solid #9fb8ff; outline-offset: 2px; }
+.ctl button[aria-pressed="true"] { background: #9fb8ff33; border-color: #9fb8ff; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: #1c1c1c; border-top: 1px solid #2e2e2e; display: flex; align-items: center; padding: 0 8px; gap: 4px; font-family: "Segoe UI Variable Text", "Segoe UI", system-ui; }
+.bar .app { width: 40px; height: 40px; border-radius: 5px; display: grid; place-items: center; }
+.bar .app i { width: 24px; height: 24px; border-radius: 5px; background: #4a4a4a; display: block; }
+.bar .app.win i { background: linear-gradient(135deg,#5ab0ff,#2a74d6); }
+.bar .gap { flex: 1; }
+.tray { display: flex; align-items: center; gap: 2px; color: #e8e8e8; font-size: 12px; }
+.tray .ic { width: 28px; height: 40px; display: grid; place-items: center; opacity: .9; }
+.tray .ic i { width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #ddd; display: block; }
+.clock { text-align: right; line-height: 1.25; padding: 0 8px; font-size: 12px; color: #f0f0f0; }
+.slot { position: relative; height: 48px; display: flex; align-items: center; }
+
+/* ---------- T1: black capsule in the taskbar, grows upward ---------- */
+.t1 .cap1 { position: relative; height: 32px; padding: 0 12px; border-radius: 16px; background: #000; display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; cursor: pointer; box-shadow: 0 0 0 1px #ffffff14; transition: box-shadow .6s; }
+.t1 .cap1 .t { color: #f3f1eebf; font-weight: 600; }
+.t1 .panel { position: absolute; right: 0; bottom: 6px; width: 100%; height: 36px; border-radius: 18px; background: #000; overflow: hidden; pointer-events: none; opacity: 0;
+  transition: width .5s var(--spring), height .5s var(--spring), border-radius .5s var(--out), opacity .15s; }
+.t1 .slot:hover .panel { width: 320px; height: 292px; border-radius: 24px; opacity: 1; pointer-events: auto; }
+.t1 .slot:hover .cap1 { opacity: 0; }
+.body { position: absolute; inset: 22px 22px auto; opacity: 0; transition: opacity .22s .16s; }
+.slot:hover .body, .fly.open .body { opacity: 1; }
+.dial { position: relative; width: 124px; height: 124px; margin: 0 auto; display: grid; place-items: center; }
+.dial svg { position: absolute; inset: 0; }
+.big { font-size: 26px; font-weight: 700; line-height: 1; text-align: center; }
+.sub { font-size: 12px; color: #f3f1eebf; font-weight: 600; margin-top: 4px; text-align: center; }
+.lines { margin-top: 12px; display: grid; gap: 6px; font-size: 12.5px; }
+.lines div { display: flex; align-items: center; gap: 8px; }
+.lines i { width: 8px; height: 8px; border-radius: 50%; }
+.lines .r { margin-left: auto; color: #f3f1eebf; }
+.sess { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff17; display: grid; gap: 4px; font-size: 12.5px; }
+.sess div { display: flex; justify-content: space-between; }
+.sess em { font-style: normal; } .w { color: #9fb8ff; } .y { color: #f0a541; }
+/* pod buds out to the LEFT inside the taskbar */
+.pod { position: absolute; right: calc(100% + 8px); top: 50%; height: 28px; margin-top: -14px; padding: 0 10px; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px #ffffff14;
+  display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; white-space: nowrap;
+  opacity: 0; transform: translateX(40px) scale(.6); transform-origin: right center; pointer-events: none; transition: opacity .3s, transform .5s var(--spring); }
+.on .pod { opacity: 1; transform: none; }
+.slot:hover .pod { opacity: 0; transform: translateX(50px) scale(.5); }
+.pod .t { color: #f3f1eebf; font-weight: 600; }
+.spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #9fb8ff44; border-top-color: #9fb8ff; animation: sp 1s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.bell { display: none; }
+.need .spin { display: none; } .need .bell { display: block; }
+.need .lbl::after { content: "needs you"; color: #f0a541; }
+.on:not(.need) .lbl::after { content: "working"; color: #9fb8ff; }
+.need .t1 .cap1, .need.t1 .cap1 { animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { box-shadow: 0 0 0 1px #ffffff14; } 50% { box-shadow: 0 0 0 1px #f0a54199, 0 0 16px 2px #f0a5415c; } }
+
+/* ---------- T2: native tray item + Windows-style flyout ---------- */
+.t2 .item { height: 40px; padding: 0 8px; border-radius: 5px; display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; cursor: pointer; color: #f0f0f0; font-family: "Segoe UI Variable Text","Segoe UI",system-ui; transition: background .12s; position: relative; }
+.t2 .item:hover, .t2 .item.open { background: #ffffff14; }
+.t2 .item .t { color: #ffffffbf; font-weight: 500; }
+.t2 .dotn { position: absolute; top: 7px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: #f0a541; box-shadow: 0 0 0 2px #1c1c1c; display: none; }
+.need .t2 .dotn, .need.t2 .dotn { display: block; }
+.fly { position: absolute; right: 120px; bottom: 60px; width: 320px; border-radius: 8px; background: #202020; border: 1px solid #ffffff14; box-shadow: 0 16px 40px #0008;
+  height: 296px; transform: translateY(16px); opacity: 0; pointer-events: none; transition: transform .35s var(--out), opacity .2s; overflow: hidden; }
+.fly.open { transform: none; opacity: 1; pointer-events: auto; }
+.t2 .pod { display: none; }
+
+/* light taskbar sample */
+.light .bar { background: #eef0f3; border-top-color: #d8dbe0; }
+.light .clock, .light .tray { color: #1b1b1b; }
+.light .tray .ic i { border-color: #333; }
+.light .bar .app i { background: #c9ccd2; }
+.light .t2 .item { color: #1b1b1b; } .light .t2 .item .t { color: #1b1b1bcc; }
+.light .t2 .item:hover { background: #0000000d; }
+.light .trk2 { stroke: #00000022; } .light .s1d { stroke: #1b1b1b; } .light .s2d { stroke: #3d6fe0; }
+@media (prefers-reduced-motion: reduce) { .tb * { transition-duration: .01s !important; animation: none !important; } }
+.legend { font: 13px/1.5 system-ui; margin: 4px 0 22px; max-width: 80ch; opacity: .9; }
+</style>
+
+<h2>Taskbar version</h2>
+<p class="subtitle">Two ways to live in the taskbar. Buttons start a Claude session / make it need you. Hover the bar item to open.</p>
+
+<div class="tb">
+<div class="options">
+
+<div class="option" data-choice="t1" onclick="toggleSelect(this)">
+<div class="letter">T1</div>
+<div class="content">
+<h3>Black capsule in the taskbar</h3>
+<p class="legend">The same black shape as the top notch, sitting in the empty part of your taskbar next to the tray. Hover: it grows upward into the panel with the same spring. A working session buds out as a pod to its left; "needs you" turns it amber with a soft glow. Matches the top notch exactly, so switching between Top and Taskbar feels like the same thing.</p>
+<div class="screen t1" id="s1">
+  <span class="cap">Taskbar · dark</span>
+  <div class="ctl"><button type="button" data-a="work">Claude starts working</button><button type="button" data-a="need">It needs you</button><button type="button" data-a="clear">Clear</button></div>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span>
+    <span class="gap"></span>
+    <div class="slot">
+      <div class="pod"><span class="spin"></span><svg class="bell" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f0a541" stroke-width="2.4" stroke-linecap="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span>notch-project</span><span class="lbl"></span><span class="t n">2m</span></div>
+      <div class="cap1"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></div>
+      <div class="panel"><div class="body">
+        <div class="dial"><svg width="124" height="124" viewBox="0 0 128 128"><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="s1" stroke-dasharray="239.3 351.9" stroke-linecap="round" transform="rotate(-90 64 64)"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="s2" stroke-dasharray="95.3 257.6" stroke-linecap="round" transform="rotate(-90 64 64)"/></svg><div><div class="big n">68%</div><div class="sub n">resets in 1:32</div></div></div>
+        <div class="lines"><div><i style="background:#f3f1ee"></i>Session <b class="n">68%</b><span class="r n">in 1h 32m</span></div><div><i style="background:#9fb8ff"></i>Week <b class="n">37%</b><span class="r n">in 3d 16h</span></div></div>
+        <div class="sess"><div><span>notch-project</span><em class="st w">working 2m</em></div></div>
+      </div></div>
+    </div>
+    <div class="tray"><span class="ic"><i></i></span><span class="ic"><i></i></span><span class="ic"><i></i></span></div>
+    <div class="clock">17:40<br>04/11/2026</div>
+  </div>
+</div>
+</div>
+</div>
+
+<div class="option" data-choice="t2" onclick="toggleSelect(this)">
+<div class="letter">T2</div>
+<div class="content">
+<h3>Native tray item + Windows flyout</h3>
+<p class="legend">No black shape: the rings and numbers sit right on the taskbar like a Windows tray item (same hover highlight as the volume/Wi-Fi icons), and it follows a light or dark taskbar. Click opens a Windows-style flyout above the taskbar, like the clock or volume panel. "Needs you" shows as a small amber dot. Quieter and more native, but looks different from the top notch.</p>
+<div class="screen t2" id="s2">
+  <span class="cap">Taskbar · dark</span>
+  <div class="ctl"><button type="button" data-a="work">Claude starts working</button><button type="button" data-a="need">It needs you</button><button type="button" data-a="clear">Clear</button></div>
+  <div class="fly" id="fly"><div class="body">
+    <div class="dial"><svg width="124" height="124" viewBox="0 0 128 128"><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="s1" stroke-dasharray="239.3 351.9" stroke-linecap="round" transform="rotate(-90 64 64)"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="s2" stroke-dasharray="95.3 257.6" stroke-linecap="round" transform="rotate(-90 64 64)"/></svg><div><div class="big n">68%</div><div class="sub n">resets in 1:32</div></div></div>
+    <div class="lines"><div><i style="background:#f3f1ee"></i>Session <b class="n">68%</b><span class="r n">in 1h 32m</span></div><div><i style="background:#9fb8ff"></i>Week <b class="n">37%</b><span class="r n">in 3d 16h</span></div></div>
+    <div class="sess"><div><span>notch-project</span><em class="st w">working 2m</em></div></div>
+  </div></div>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span>
+    <span class="gap"></span>
+    <div class="slot"><div class="item" id="it" tabindex="0" role="button" aria-expanded="false" aria-controls="fly"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span><span class="dotn"></span></div></div>
+    <div class="tray"><span class="ic"><i></i></span><span class="ic"><i></i></span><span class="ic"><i></i></span></div>
+    <div class="clock">17:40<br>04/11/2026</div>
+  </div>
+</div>
+<div class="screen t2 light" style="height:70px">
+  <span class="cap" style="color:#fff">Same item on a light taskbar</span>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="gap"></span>
+    <div class="slot"><div class="item"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk2"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1d" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk2"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2d" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></div></div>
+    <div class="tray"><span class="ic"><i></i></span><span class="ic"><i></i></span></div>
+    <div class="clock">17:40<br>04/11/2026</div>
+  </div>
+</div>
+</div>
+</div>
+
+</div>
+</div>
+
+<script>
+(() => {
+  for (const id of ['s1', 's2']) {
+    const s = document.getElementById(id);
+    s.querySelectorAll('.ctl button').forEach((b) => b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const a = b.dataset.a;
+      s.classList.toggle('on', a !== 'clear'); s.classList.toggle('need', a === 'need');
+      s.querySelectorAll('.ctl button').forEach((x) => x.setAttribute('aria-pressed', x === b && a !== 'clear'));
+      s.querySelectorAll('.st').forEach((x) => { x.textContent = a === 'need' ? 'needs you' : 'working 2m'; x.className = 'st ' + (a === 'need' ? 'y' : 'w'); });
+      s.querySelectorAll('.sess').forEach((x) => x.hidden = a === 'clear');
+    }));
+  }
+  const it = document.getElementById('it'), fly = document.getElementById('fly');
+  const tog = (e) => { e.stopPropagation(); const o = !fly.classList.contains('open'); fly.classList.toggle('open', o); it.classList.toggle('open', o); it.setAttribute('aria-expanded', o); };
+  it.addEventListener('click', tog);
+  it.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tog(e); } if (e.key === 'Escape') { fly.classList.remove('open'); it.classList.remove('open'); it.setAttribute('aria-expanded', false); } });
+})();
+</script>

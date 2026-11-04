@@ -1,0 +1,87 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap');
+.cc { font-family: Manrope, system-ui; color: #f3f1ee; --ease: cubic-bezier(.2,.9,.1,1); }
+.n { font-variant-numeric: tabular-nums; }
+.trk { stroke: #ffffff24; } .s1 { stroke: #f3f1ee; } .s2 { stroke: #9fb8ff; } .warn { stroke: #f0a541; } .full { stroke: #ff6b6b; }
+.grid { display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+.screen { position: relative; height: 330px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #3d4a5c 0%, #27303d 55%, #1b2029 100%); }
+.cap { position: absolute; left: 12px; bottom: 10px; font: 12px system-ui; color: #ffffffb3; }
+.island { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); width: 150px; height: 34px; border-radius: 17px; background: #121214;
+  box-shadow: 0 0 0 1px #ffffff12, 0 8px 24px #0006; overflow: hidden; cursor: pointer;
+  transition: width .45s var(--ease), height .45s var(--ease), border-radius .45s var(--ease); }
+.island:hover { width: 300px; height: 262px; border-radius: 28px; }
+.row { position: absolute; inset: 0 0 auto; height: 34px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 13px; font-weight: 700; transition: opacity .2s; }
+.row .t { color: #f3f1eeb3; font-weight: 600; }
+.island:hover .row { opacity: 0; }
+.body { position: absolute; inset: 20px 22px auto; opacity: 0; transition: opacity .25s .12s; }
+.island:hover .body { opacity: 1; }
+.dial { position: relative; width: 140px; height: 140px; margin: 0 auto; display: grid; place-items: center; }
+.dial svg { position: absolute; inset: 0; }
+.dial .mid { text-align: center; }
+.big { font-size: 28px; font-weight: 700; line-height: 1; letter-spacing: -.01em; }
+.sub { font-size: 12px; color: #f3f1eeb3; font-weight: 600; margin-top: 4px; }
+.lines { margin-top: 12px; display: grid; gap: 6px; font-size: 12.5px; }
+.lines div { display: flex; align-items: center; gap: 8px; }
+.lines i { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.lines .r { margin-left: auto; color: #f3f1eeb3; }
+.foot { margin-top: 10px; padding-top: 10px; border-top: 1px solid #ffffff14; font-size: 12.5px; display: flex; justify-content: space-between; }
+.foot em { font-style: normal; color: #f0a541; }
+.states { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #1b2029; border-radius: 10px; }
+.line { display: flex; align-items: center; gap: 12px; }
+.lab { font: 12px system-ui; color: #ffffffb3; width: 104px; flex: none; }
+.pill { display: inline-flex; align-items: center; gap: 10px; height: 34px; padding: 0 14px; border-radius: 17px; background: #121214; box-shadow: 0 0 0 1px #ffffff12; font-size: 13px; font-weight: 700; }
+.pill .t { color: #f3f1eeb3; font-weight: 600; }
+.icons { display: flex; align-items: end; gap: 22px; margin-top: 18px; padding: 16px; background: #f3f3f3; border-radius: 10px; color: #222; font: 12px system-ui; }
+.icons figure { margin: 0; text-align: center; }
+.icons figcaption { margin-top: 6px; }
+.why { margin: 0 0 14px; max-width: 74ch; font-family: system-ui; opacity: .9; }
+@media (prefers-reduced-motion: reduce) { .cc * { transition-duration: .01s !important; } }
+</style>
+
+<h2>Concentric rings + countdown</h2>
+<p class="subtitle">Hover the capsule to open it. Right: every state of the closed capsule. Bottom: app icon from the same rings.</p>
+
+<div class="cc">
+<p class="why">Closed: the double ring (session outside, week inside), your session %, then the time until the session resets. Open: the same rings grown big, session % in the middle, then one line per limit with its own countdown, and sessions that need you.</p>
+<div class="grid">
+  <div class="screen">
+    <div class="island">
+      <div class="row">
+        <svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg>
+        <span class="n">68%</span><span class="t n">1:32</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f0a541" stroke-width="2.4" stroke-linecap="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+      </div>
+      <div class="body">
+        <div class="dial">
+          <svg width="140" height="140" viewBox="0 0 140 140"><circle cx="70" cy="70" r="62" fill="none" stroke-width="10" class="trk"/><circle cx="70" cy="70" r="62" fill="none" stroke-width="10" class="s1" stroke-dasharray="264.9 389.6" stroke-linecap="round" transform="rotate(-90 70 70)"/><circle cx="70" cy="70" r="47" fill="none" stroke-width="10" class="trk"/><circle cx="70" cy="70" r="47" fill="none" stroke-width="10" class="s2" stroke-dasharray="109.3 295.3" stroke-linecap="round" transform="rotate(-90 70 70)"/></svg>
+          <div class="mid"><div class="big n">68%</div><div class="sub n">resets in 1:32</div></div>
+        </div>
+        <div class="lines">
+          <div><i style="background:#f3f1ee"></i>Session <b class="n">68%</b><span class="r n">resets in 1h 32m</span></div>
+          <div><i style="background:#9fb8ff"></i>Week <b class="n">37%</b><span class="r n">resets in 3d 16h</span></div>
+        </div>
+        <div class="foot"><span>notch-project</span><em>needs you</em><span>2m</span></div>
+      </div>
+    </div>
+    <span class="cap">Top of screen · hover the capsule</span>
+  </div>
+
+  <div class="states">
+    <div class="line"><span class="lab">Normal</span><span class="pill"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></span></div>
+    <div class="line"><span class="lab">Under an hour</span><span class="pill"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="s1" stroke-dasharray="49 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">78%</span><span class="t n">45m</span></span></div>
+    <div class="line"><span class="lab">Alert (92%)</span><span class="pill"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="warn" stroke-dasharray="57.8 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n" style="color:#f0a541">92%</span><span class="t n">1:32</span></span></div>
+    <div class="line"><span class="lab">Full</span><span class="pill"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="full"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n" style="color:#ff6b6b">back in 1:32</span></span></div>
+    <div class="line"><span class="lab">Week low, idle</span><span class="pill"><svg width="22" height="22" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">0%</span><span class="t">ready</span></span></div>
+    <div class="line"><span class="lab">Session needs you</span><span class="pill"><span style="color:#f0a541">notch-project needs you</span></span></div>
+    <div class="line"><span class="lab">Taskbar</span><span class="pill" style="height:30px;border-radius:15px;padding:0 10px;gap:8px"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.6" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="trk"/><circle cx="12" cy="12" r="5.6" fill="none" stroke-width="2.6" class="s2" stroke-dasharray="13 35.2" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></span></div>
+  </div>
+</div>
+
+<div class="icons">
+  <figure><svg width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#121214"/><circle cx="32" cy="32" r="21" fill="none" stroke="#ffffff26" stroke-width="6"/><circle cx="32" cy="32" r="21" fill="none" stroke="#f3f1ee" stroke-width="6" stroke-dasharray="90 132" stroke-linecap="round" transform="rotate(-90 32 32)"/><circle cx="32" cy="32" r="12" fill="none" stroke="#ffffff26" stroke-width="6"/><circle cx="32" cy="32" r="12" fill="none" stroke="#9fb8ff" stroke-width="6" stroke-dasharray="28 75.4" stroke-linecap="round" transform="rotate(-90 32 32)"/></svg><figcaption>App icon</figcaption></figure>
+  <figure><svg width="32" height="32" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#121214"/><circle cx="32" cy="32" r="21" fill="none" stroke="#ffffff26" stroke-width="7"/><circle cx="32" cy="32" r="21" fill="none" stroke="#f3f1ee" stroke-width="7" stroke-dasharray="90 132" stroke-linecap="round" transform="rotate(-90 32 32)"/><circle cx="32" cy="32" r="12" fill="none" stroke="#ffffff26" stroke-width="7"/><circle cx="32" cy="32" r="12" fill="none" stroke="#9fb8ff" stroke-width="7" stroke-dasharray="28 75.4" stroke-linecap="round" transform="rotate(-90 32 32)"/></svg><figcaption>32 px</figcaption></figure>
+  <figure><svg width="16" height="16" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#121214"/><circle cx="32" cy="32" r="21" fill="none" stroke="#f3f1ee" stroke-width="9" stroke-dasharray="90 132" stroke-linecap="round" transform="rotate(-90 32 32)"/><circle cx="32" cy="32" r="9" fill="#9fb8ff"/></svg><figcaption>16 px (tray)</figcaption></figure>
+  <figure style="margin-left:auto;max-width:36ch;text-align:left">Toasts would show this icon instead of "PowerShell". The tray icon could show your live session ring.</figure>
+</div>
+</div>

@@ -1,0 +1,72 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap');
+.tf { font-family: Manrope, system-ui; color: #f3f1ee; --spring: cubic-bezier(.34,1.4,.55,1); }
+.n { font-variant-numeric: tabular-nums; }
+.trk { stroke: #ffffff24; } .s1 { stroke: #f3f1ee; } .s2 { stroke: #9fb8ff; }
+.screen { position: relative; height: 150px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #3d4a5c 0%, #27303d 55%, #1b2029 100%); margin-bottom: 14px; }
+.lab { position: absolute; left: 12px; top: 10px; font: 13px system-ui; color: #fff; }
+.lab b { display: block; }
+.bar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: #1c1c1c; border-top: 1px solid #2e2e2e; display: flex; align-items: center; padding: 0 8px; gap: 4px; }
+.app { width: 40px; height: 40px; display: grid; place-items: center; flex: none; }
+.app i { width: 24px; height: 24px; border-radius: 5px; background: #4a4a4a; display: block; }
+.app.win i { background: linear-gradient(135deg,#5ab0ff,#2a74d6); }
+.app.more { color: #ddd; font: 18px system-ui; }
+.gap { flex: 1; min-width: 0; }
+.tray { display: flex; gap: 2px; flex: none; }
+.tray i { width: 28px; height: 40px; display: grid; place-items: center; }
+.tray i::after { content: ""; width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #ddd; }
+.clock { flex: none; text-align: right; line-height: 1.25; padding: 0 8px; font: 12px "Segoe UI", system-ui; color: #f0f0f0; }
+.cap1 { flex: none; height: 32px; padding: 0 12px; border-radius: 16px; background: #000; display: flex; align-items: center; gap: 9px; font-size: 13px; font-weight: 700; box-shadow: 0 0 0 1px #ffffff14; margin-right: 6px; }
+.cap1 .t { color: #f3f1eebf; font-weight: 600; }
+.cap1.mini { padding: 0 6px; }
+.top { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+.top .cap1 { border-radius: 0 0 16px 16px; margin: 0; }
+.ghost { flex: none; width: 150px; height: 32px; border-radius: 16px; border: 1.5px dashed #ff6b6b; margin-right: 6px; display: grid; place-items: center; font: 12px system-ui; color: #ffb3b3; }
+.cross { position: absolute; }
+.arrow { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); font: 12px system-ui; color: #ffffffcc; }
+</style>
+
+<h2>When the taskbar fills up</h2>
+<p class="subtitle">Windows cannot reserve space for us inside the taskbar, so the app watches the free space and adapts.</p>
+
+<div class="tf">
+<div class="screen">
+  <span class="lab"><b>1. Room to spare</b>Full capsule</span>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span>
+    <span class="gap"></span>
+    <span class="cap1"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></span>
+    <span class="tray"><i></i><i></i><i></i></span><span class="clock">17:40<br>04/11/2026</span>
+  </div>
+</div>
+
+<div class="screen">
+  <span class="lab"><b>2. Getting tight</b>Shrinks to the rings only (hover still opens the full panel)</span>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span>
+    <span class="gap"></span>
+    <span class="cap1 mini"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg></span>
+    <span class="tray"><i></i><i></i><i></i></span><span class="clock">17:40<br>04/11/2026</span>
+  </div>
+</div>
+
+<div class="screen">
+  <span class="lab"><b>3. Full</b>Moves to the top notch by itself; comes back when apps close</span>
+  <div class="top"><span class="cap1"><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span><span class="t n">1:32</span></span></div>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app more">…</span>
+    <span class="gap"></span>
+    <span class="tray"><i></i><i></i><i></i></span><span class="clock">17:40<br>04/11/2026</span>
+  </div>
+</div>
+
+<div class="screen">
+  <span class="lab"><b>What we avoid</b>Without this, Windows slides app icons under the capsule</span>
+  <div class="bar">
+    <span class="app win"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span><span class="app"><i></i></span>
+    <span class="gap"></span>
+    <span class="ghost">icons hidden under it</span>
+    <span class="tray"><i></i><i></i><i></i></span><span class="clock">17:40<br>04/11/2026</span>
+  </div>
+</div>
+</div>

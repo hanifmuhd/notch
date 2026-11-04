@@ -1,0 +1,114 @@
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700&display=swap');
+.cb { font-family: Manrope, system-ui; color: #f3f1ee; --spring: cubic-bezier(.34,1.4,.55,1); --out: cubic-bezier(.2,.9,.1,1); --sh: 14px; }
+.n { font-variant-numeric: tabular-nums; }
+.trk { stroke: #ffffff24; } .s1 { stroke: #f3f1ee; } .s2 { stroke: #9fb8ff; }
+.why { margin: 0 0 12px; max-width: 76ch; font-family: system-ui; opacity: .9; }
+.screen { position: relative; height: 340px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #3d4a5c 0%, #27303d 55%, #1b2029 100%); }
+.cap { position: absolute; left: 12px; bottom: 12px; font: 12px system-ui; color: #ffffffcc; }
+.ctl { position: absolute; right: 12px; bottom: 10px; display: flex; gap: 8px; }
+.ctl button { font: 12px system-ui; color: #fff; background: #ffffff24; border: 1px solid #ffffff40; border-radius: 6px; padding: 7px 11px; cursor: pointer; }
+.ctl button:focus-visible { outline: 2px solid #9fb8ff; outline-offset: 2px; }
+.ctl button[aria-pressed="true"] { background: #9fb8ff33; border-color: #9fb8ff; }
+
+/* the notch, with shoulders that melt into the top edge */
+.wrap { position: absolute; top: 0; left: 50%; transform: translateX(-50%); }
+.shape { position: relative; background: #000; width: 230px; height: 32px; border-radius: 0 0 16px 16px; cursor: pointer;
+  transition: width .5s var(--spring), height .5s var(--spring), border-radius .5s var(--out), box-shadow .6s; }
+.shape::before, .shape::after { content: ""; position: absolute; top: 0; width: var(--sh); height: var(--sh); }
+.shape::before { left: calc(-1 * var(--sh)); background: radial-gradient(circle at 0 100%, transparent calc(var(--sh) - .5px), #000 var(--sh)); }
+.shape::after { right: calc(-1 * var(--sh)); background: radial-gradient(circle at 100% 100%, transparent calc(var(--sh) - .5px), #000 var(--sh)); }
+.wrap:hover .shape { width: 330px; height: 262px; border-radius: 0 0 30px 30px; }
+.ears { position: absolute; inset: 0 14px auto; height: 32px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 700; transition: opacity .18s; }
+.ears span { display: flex; align-items: center; gap: 7px; }
+.ears .t { color: #f3f1eebf; font-weight: 600; }
+.wrap:hover .ears { opacity: 0; }
+.body { position: absolute; inset: 24px 24px auto; opacity: 0; transition: opacity .22s .14s; }
+.wrap:hover .body { opacity: 1; }
+.dial { position: relative; width: 128px; height: 128px; margin: 0 auto; display: grid; place-items: center; }
+.dial svg { position: absolute; inset: 0; }
+.big { font-size: 26px; font-weight: 700; line-height: 1; text-align: center; }
+.sub { font-size: 12px; color: #f3f1eebf; font-weight: 600; margin-top: 4px; text-align: center; }
+.lines { margin-top: 12px; display: grid; gap: 6px; font-size: 12.5px; }
+.lines div { display: flex; align-items: center; gap: 8px; }
+.lines i { width: 8px; height: 8px; border-radius: 50%; }
+.lines .r { margin-left: auto; color: #f3f1eebf; }
+.sess { margin-top: 10px; padding-top: 8px; border-top: 1px solid #ffffff17; display: grid; gap: 4px; font-size: 12.5px; }
+.sess div { display: flex; justify-content: space-between; }
+.sess em { font-style: normal; } .sess .w { color: #9fb8ff; } .sess .y { color: #f0a541; }
+
+/* satellite pod: buds out beside the notch, merges back on open */
+.pod { position: absolute; top: 3px; left: calc(100% + 18px); height: 26px; padding: 0 11px 0 9px; border-radius: 13px; background: #000;
+  display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; white-space: nowrap;
+  opacity: 0; transform: translateX(-40px) scale(.6); transform-origin: left center; pointer-events: none;
+  transition: opacity .3s, transform .5s var(--spring), background .3s; }
+.on .pod { opacity: 1; transform: none; }
+.wrap:hover .pod { opacity: 0; transform: translateX(-60px) scale(.5); }
+.pod .spin { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #9fb8ff44; border-top-color: #9fb8ff; animation: sp 1s linear infinite; }
+.pod .t { color: #f3f1eebf; font-weight: 600; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.need .pod .spin { display: none; }
+.pod .bell { display: none; }
+.need .pod .bell { display: block; }
+.need .pod .lbl::after { content: "needs you"; color: #f0a541; }
+.on:not(.need) .pod .lbl::after { content: "working"; color: #9fb8ff; }
+/* calm breathing glow while something needs you */
+.need .shape { animation: breathe 2.4s ease-in-out infinite; }
+@keyframes breathe { 0%,100% { box-shadow: 0 0 0 0 #f0a54100; } 50% { box-shadow: 0 2px 18px 2px #f0a5415c; } }
+@media (prefers-reduced-motion: reduce) { .cb * { transition-duration: .01s !important; animation: none !important; } .need .shape { box-shadow: 0 0 0 1.5px #f0a541; } }
+.notes { margin-top: 14px; display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 22px; font: 13px/1.5 system-ui; }
+@media (max-width: 800px) { .notes { grid-template-columns: 1fr; } }
+.notes b { display: block; }
+</style>
+
+<h2>Combined: your rings + V-Notch + Venu ideas</h2>
+<p class="subtitle">Use the buttons to start a Claude session and make it need you. Hover the notch to open it (the pod merges in).</p>
+
+<div class="cb">
+<div class="screen" id="scr">
+  <div class="wrap">
+    <div class="shape">
+      <div class="ears">
+        <span><svg width="20" height="20" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="10" fill="none" stroke-width="2.8" class="s1" stroke-dasharray="42.7 62.8" stroke-linecap="round" transform="rotate(-90 12 12)"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="trk"/><circle cx="12" cy="12" r="5.4" fill="none" stroke-width="2.8" class="s2" stroke-dasharray="12.6 33.9" stroke-linecap="round" transform="rotate(-90 12 12)"/></svg><span class="n">68%</span></span>
+        <span class="t n">1:32</span>
+      </div>
+      <div class="body">
+        <div class="dial"><svg width="128" height="128" viewBox="0 0 128 128"><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="56" fill="none" stroke-width="10" class="s1" stroke-dasharray="239.3 351.9" stroke-linecap="round" transform="rotate(-90 64 64)"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="trk"/><circle cx="64" cy="64" r="41" fill="none" stroke-width="10" class="s2" stroke-dasharray="95.3 257.6" stroke-linecap="round" transform="rotate(-90 64 64)"/></svg><div><div class="big n">68%</div><div class="sub n">resets in 1:32</div></div></div>
+        <div class="lines"><div><i style="background:#f3f1ee"></i>Session <b class="n">68%</b><span class="r n">in 1h 32m</span></div><div><i style="background:#9fb8ff"></i>Week <b class="n">37%</b><span class="r n">in 3d 16h</span></div></div>
+        <div class="sess" id="sess" hidden><div><span>notch-project</span><em id="st" class="w">working 2m</em></div></div>
+      </div>
+    </div>
+    <div class="pod"><span class="spin"></span><svg class="bell" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f0a541" stroke-width="2.4" stroke-linecap="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span>notch-project</span><span class="lbl"></span><span class="t n">2m</span></div>
+  </div>
+  <span class="cap">Attached notch with soft shoulders · hover to open</span>
+  <div class="ctl">
+    <button type="button" id="b-work" aria-pressed="false">Claude starts working</button>
+    <button type="button" id="b-need" aria-pressed="false">It needs you</button>
+    <button type="button" id="b-clear">Clear</button>
+  </div>
+</div>
+
+<div class="notes">
+  <div><b>Shoulders (Venu)</b>The black curves into the screen edge on both sides, so the notch looks part of the screen, not a box stuck on it.</div>
+  <div><b>Ears (V-Notch / Venu split pill)</b>Rings and % on the left, countdown on the right, quiet middle.</div>
+  <div><b>Satellite pod (Venu)</b>A running Claude session buds out beside the notch with a timer; it turns amber with a bell when it needs you, and merges into the panel when you open it.</div>
+  <div><b>Calm alert glow (Venu)</b>While a session needs you, a soft amber glow breathes around the notch instead of flashing text. Reduced motion: a still amber outline.</div>
+  <div><b>Spring open (both)</b>The notch grows with a small overshoot, then settles.</div>
+  <div><b>Hover intent (Venu)</b>In the real app it opens only after the pointer rests ~0.3 s, so sweeping to browser tabs does not pop it open.</div>
+</div>
+</div>
+
+<script>
+(() => {
+  const scr = document.getElementById('scr'), sess = document.getElementById('sess'), st = document.getElementById('st');
+  const w = document.getElementById('b-work'), nd = document.getElementById('b-need'), c = document.getElementById('b-clear');
+  const set = (on, need) => {
+    scr.classList.toggle('on', on); scr.classList.toggle('need', need);
+    w.setAttribute('aria-pressed', on && !need); nd.setAttribute('aria-pressed', need);
+    sess.hidden = !on; st.textContent = need ? 'needs you' : 'working 2m'; st.className = need ? 'y' : 'w';
+  };
+  w.onclick = (e) => { e.stopPropagation(); set(true, false); };
+  nd.onclick = (e) => { e.stopPropagation(); set(true, true); };
+  c.onclick = (e) => { e.stopPropagation(); set(false, false); };
+})();
+</script>
