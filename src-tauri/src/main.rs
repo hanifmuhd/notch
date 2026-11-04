@@ -20,7 +20,7 @@ mod view;
 
 use alerts::AlertEvent;
 use app_state::AppState;
-use chrono::{DateTime, Datelike, Local, Utc};
+use chrono::{DateTime, Local, Utc};
 use serde::Serialize;
 use settings::Settings;
 use source::SystemRunner;
@@ -439,7 +439,6 @@ fn replace(app: &AppHandle) {
     });
 }
 
-/// The webview reports where the visible shape is; only there does the window take the mouse.
 /// JAKIM zones for the settings dropdown, as (code, places).
 #[tauri::command]
 fn get_zones() -> Vec<(&'static str, &'static str)> {
@@ -476,19 +475,20 @@ fn track_prayer(app: AppHandle) {
                 let now = prayer_now();
                 let dir = state.data_dir();
                 let mut days = prayer::load_days(&dir, &s.prayer_zone, now);
-                let have_today = prayer::today(&days, now).is_some();
+                // Before the download, so a new zone never shows with the old zone's times.
+                state.set_prayer_days(days.clone());
+                let missing = prayer::missing_months(&days, now);
                 let retry_due = tried.as_ref().is_none_or(|(z, at)| *z != s.prayer_zone || now - *at >= chrono::Duration::hours(1));
-                if !have_today && retry_due {
+                if !missing.is_empty() && retry_due {
                     tried = Some((s.prayer_zone.clone(), now));
-                    if let Some(body) = prayer::fetch_month(&SystemRunner, &s.prayer_zone) {
-                        let month = prayer::parse_month(&body).and_then(|d| d.first().map(|x| (x.date.year(), x.date.month())));
-                        if let Some(m) = month {
+                    for m in missing {
+                        if let Some(body) = prayer::fetch_month(&SystemRunner, &s.prayer_zone, m) {
                             let _ = settings::write_atomic(&prayer::cache_path(&dir, &s.prayer_zone, m), &body);
                         }
-                        days = prayer::load_days(&dir, &s.prayer_zone, now);
                     }
+                    days = prayer::load_days(&dir, &s.prayer_zone, now);
+                    state.set_prayer_days(days);
                 }
-                state.set_prayer_days(days);
                 let place = prayer_zones::ZONES.iter().find(|(c, _)| *c == s.prayer_zone).map_or("", |(_, p)| *p).to_string();
                 let alerts = state.prayer_due(now);
                 if alerts.is_empty() {
@@ -525,6 +525,7 @@ fn prayer_texts(a: &prayer::Alert) -> (String, view::Banner) {
     }
 }
 
+/// The webview reports where the visible shape is; only there does the window take the mouse.
 #[tauri::command]
 fn set_hit_rects(rects: Vec<hit::HitRect>) {
     *HIT_RECTS.lock().unwrap_or_else(|e| e.into_inner()) = rects;

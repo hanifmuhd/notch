@@ -59,7 +59,7 @@ The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format js
 
 Task alerts use Claude Code's own hooks. Each hook copies the whole event Claude Code hands it into a file in the app's folder on your PC. That copy can include your prompt, Claude's last reply, or the command or file it asked permission for. The app reads each file and deletes it within about a second; files written while the app is closed are deleted at its next start (after a day at most). Nothing is sent anywhere.
 
-Prayer times, when on, download the month's times for your zone from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, about once a month and when you change zone. Only the zone code is sent. The times are kept beside the settings file.
+Prayer times, when on, download your zone's times for this month and next from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, about once a month and when you change zone. Only the zone code and the month's first and last dates are sent. The times are kept beside the settings file.
 
 ## Uninstall
 

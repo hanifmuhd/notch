@@ -66,7 +66,7 @@ pub fn parse_month(json: &str) -> Option<Vec<Day>> {
         .as_array()?
         .iter()
         .filter_map(|d| {
-            let date = NaiveDate::parse_from_str(d.get("date")?.as_str()?, "%d-%b-%Y").ok()?;
+            let date = parse_date(d.get("date")?.as_str()?)?;
             let at = |key: &str| {
                 let t = NaiveTime::parse_from_str(d.get(key)?.as_str()?, "%H:%M:%S").ok()?;
                 Kuala_Lumpur.from_local_datetime(&date.and_time(t)).single().map(|x| x.with_timezone(&Utc))
@@ -78,16 +78,43 @@ pub fn parse_month(json: &str) -> Option<Vec<Day>> {
     (!days.is_empty()).then_some(days)
 }
 
+/// "01-Dis-2026": e-solat uses Malay month names (Mac, Mei, Ogos, Okt, Dis); English ones are
+/// accepted too.
+fn parse_date(s: &str) -> Option<NaiveDate> {
+    let mut parts = s.split('-');
+    let (day, month, year) = (parts.next()?.parse().ok()?, parts.next()?, parts.next()?.parse().ok()?);
+    const MONTHS: [&[&str]; 12] = [&["jan"], &["feb"], &["mac", "mar"], &["apr"], &["mei", "may"], &["jun"], &["jul"],
+        &["ogos", "ogo", "aug"], &["sep"], &["okt", "oct"], &["nov"], &["dis", "dec"]];
+    let m = MONTHS.iter().position(|names| names.contains(&month.to_ascii_lowercase().as_str()))?;
+    NaiveDate::from_ymd_opt(year, m as u32 + 1, day)
+}
+
+/// This month and next month (Malaysia time), whichever has no days cached. Next month is
+/// fetched ahead so tomorrow's Subuh is known on the last evening of a month.
+pub fn missing_months(days: &[Day], now: DateTime<Utc>) -> Vec<(i32, u32)> {
+    let today = now.with_timezone(&Kuala_Lumpur).date_naive();
+    let next = today.checked_add_months(chrono::Months::new(1)).unwrap_or(today);
+    [today, next]
+        .iter()
+        .map(|d| (d.year(), d.month()))
+        .filter(|&(y, m)| !days.iter().any(|d| d.date.year() == y && d.date.month() == m))
+        .collect()
+}
+
 /// Where a zone's month is kept: `prayer-<ZONE>-<YYYY-MM>.json` in the app's folder.
 pub fn cache_path(dir: &Path, zone: &str, month: (i32, u32)) -> PathBuf {
     dir.join(format!("prayer-{zone}-{}-{:02}.json", month.0, month.1))
 }
 
-/// Downloads the month with Windows' curl; the body only when it parses (prayer spec 5.1).
-pub fn fetch_month(runner: &dyn Runner, zone: &str) -> Option<String> {
-    let url = format!("https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=month&zone={zone}");
+/// Downloads one month with Windows' curl; the body only when it parses (prayer spec 5.1).
+/// `period=duration` takes any month, so next month can be fetched before it starts.
+pub fn fetch_month(runner: &dyn Runner, zone: &str, (year, month): (i32, u32)) -> Option<String> {
+    let first = NaiveDate::from_ymd_opt(year, month, 1)?;
+    let last = first.checked_add_months(chrono::Months::new(1))?.pred_opt()?;
+    let range = format!("datestart={first}&dateend={last}");
+    let url = format!("https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=duration&zone={zone}");
     let body = runner
-        .run("curl.exe", &["-s", "-f", "-m", "30", "-A", "ClaudeNotch", &url], std::time::Duration::from_secs(35))
+        .run("curl.exe", &["-s", "-f", "-m", "30", "-A", "ClaudeNotch", "-d", &range, &url], std::time::Duration::from_secs(35))
         .ok()?;
     parse_month(&body).map(|_| body)
 }
@@ -221,6 +248,34 @@ mod tests {
         assert_eq!(next(&days(), my(30, 21, 0)), None);
     }
 
+    /// e-solat writes dates with Malay month names: Mac, Mei, Ogos, Okt, Dis.
+    #[test]
+    fn parses_malay_month_names() {
+        let day = |date: &str| format!(r#"{{"date":"{date}","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}}"#);
+        let json = format!(r#"{{"status":"OK!","prayerTime":[{}]}}"#,
+            ["01-Mac-2026", "01-Mei-2026", "01-Ogos-2026", "01-Okt-2026", "01-Dis-2026", "01-Jan-2027"].map(day).join(","));
+        let dates: Vec<_> = parse_month(&json).unwrap().iter().map(|d| (d.date.month(), d.date.year())).collect();
+        assert_eq!(dates, vec![(3, 2026), (5, 2026), (8, 2026), (10, 2026), (12, 2026), (1, 2027)]);
+    }
+
+    #[test]
+    fn month_end_with_next_month_is_tomorrow_subuh() {
+        let mut d = days();
+        d.extend(parse_month(r#"{"status":"OK!","prayerTime":[{"date":"01-Dis-2026","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}]}"#).unwrap());
+        let dec1_subuh = Kuala_Lumpur.with_ymd_and_hms(2026, 12, 1, 5, 52, 0).unwrap().with_timezone(&Utc);
+        assert_eq!(next(&d, my(30, 21, 0)), Some((Prayer::Subuh, dec1_subuh)));
+    }
+
+    #[test]
+    fn missing_months_are_this_and_next() {
+        let d = days();
+        assert_eq!(missing_months(&[], my(4, 12, 0)), vec![(2026, 11), (2026, 12)]);
+        assert_eq!(missing_months(&d, my(4, 12, 0)), vec![(2026, 12)]);
+        let mut both = d.clone();
+        both.extend(parse_month(r#"{"status":"OK!","prayerTime":[{"date":"01-Dis-2026","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}]}"#).unwrap());
+        assert!(missing_months(&both, my(30, 21, 0)).is_empty());
+    }
+
     #[test]
     fn due_fires_once() {
         let d = days();
@@ -279,21 +334,22 @@ mod tests {
     }
 
     #[test]
-    fn fetch_uses_curl_with_zone() {
+    fn fetch_uses_curl_with_zone_and_month() {
         let r = OneCall(Default::default(), Ok(FIXTURE.to_string()));
-        assert_eq!(fetch_month(&r, "WLY02").as_deref(), Some(FIXTURE));
-        assert_eq!(
-            r.0.borrow()[0],
-            "curl.exe -s -f -m 30 -A ClaudeNotch https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=month&zone=WLY02"
-        );
+        assert_eq!(fetch_month(&r, "WLY02", (2026, 12)).as_deref(), Some(FIXTURE));
+        assert_eq!(fetch_month(&r, "WLY02", (2028, 2)).as_deref(), Some(FIXTURE));
+        let calls = r.0.borrow();
+        let url = "https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=duration&zone=WLY02";
+        assert_eq!(calls[0], format!("curl.exe -s -f -m 30 -A ClaudeNotch -d datestart=2026-12-01&dateend=2026-12-31 {url}"));
+        assert_eq!(calls[1], format!("curl.exe -s -f -m 30 -A ClaudeNotch -d datestart=2028-02-01&dateend=2028-02-29 {url}"));
     }
 
     #[test]
     fn fetch_rejects_bad_body() {
         let r = OneCall(Default::default(), Ok("<html>maintenance</html>".into()));
-        assert_eq!(fetch_month(&r, "WLY01"), None);
+        assert_eq!(fetch_month(&r, "WLY01", (2026, 11)), None);
         let r = OneCall(Default::default(), Err(crate::source::RunError::Timeout));
-        assert_eq!(fetch_month(&r, "WLY01"), None);
+        assert_eq!(fetch_month(&r, "WLY01", (2026, 11)), None);
     }
 
     #[test]
