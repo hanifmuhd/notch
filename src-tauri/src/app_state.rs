@@ -137,11 +137,12 @@ impl AppState {
         self.lock().settings_path.with_file_name("events")
     }
 
-    /// Applies hook events as `events::take_files` returns them; returns the toasts to show.
-    pub fn apply_events(&self, events: Vec<(HookEvent, DateTime<Utc>, bool)>) -> Vec<Notice> {
+    /// Applies hook events as `events::take_files` returns them, read at `now`; returns the
+    /// toasts to show.
+    pub fn apply_events(&self, events: Vec<(HookEvent, DateTime<Utc>, bool)>, now: DateTime<Utc>) -> Vec<Notice> {
         let mut s = self.lock();
         let finished_on = s.settings.task_finished;
-        events.into_iter().filter_map(|(e, at, quiet)| s.sessions.apply(e, at, quiet, finished_on)).collect()
+        events.into_iter().filter_map(|(e, at, quiet)| s.sessions.apply(e, at, now, quiet, finished_on)).collect()
     }
 
     /// Clears finished sessions older than 30 min; true if any went.
@@ -285,9 +286,9 @@ mod tests {
         use crate::events::{HookEvent, Kind};
         let stop = || vec![(HookEvent { session_id: "a".into(), project: "own".into(), kind: Kind::Finished }, Utc::now(), false)];
         let off = test_state(Settings { task_finished: false, ..Settings::default() });
-        assert!(off.apply_events(stop()).is_empty());
+        assert!(off.apply_events(stop(), Utc::now()).is_empty());
         let on = state();
-        assert_eq!(on.apply_events(stop()).len(), 1);
+        assert_eq!(on.apply_events(stop(), Utc::now()).len(), 1);
         assert!(!on.expire_sessions(Utc::now()));
         on.sessions_seen();
         assert!(on.lock().sessions.rows().is_empty());

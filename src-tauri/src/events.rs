@@ -40,7 +40,7 @@ pub struct SessionRow {
 const FINISHED_FOR: Duration = Duration::minutes(30);
 /// A reply at least this long toasts when it finishes (spec 5.2).
 const LONG_REPLY: Duration = Duration::seconds(60);
-/// Files written this long before app start are dropped (spec 5.2).
+/// Files already waiting at start and older than this are dropped (spec 5.2).
 const START_GRACE: Duration = Duration::minutes(10);
 /// Any file older than this is deleted unread.
 const MAX_FILE_AGE: Duration = Duration::days(1);
@@ -90,9 +90,10 @@ pub fn parse_event(json: &str) -> Option<HookEvent> {
 }
 
 impl Sessions {
-    /// Applies one event at time `at`; returns the toast to show, if any. `quiet` events
-    /// (written before the app started) update the list but never notify.
-    pub fn apply(&mut self, e: HookEvent, at: DateTime<Utc>, quiet: bool, finished_on: bool) -> Option<Notice> {
+    /// Applies one event; returns the toast to show, if any. `at` is the file-name time (the
+    /// writer's clock, maybe WSL's), used only for the 1-minute rule; `seen` is when the app read
+    /// it, used for row age and expiry. `quiet` events update the list but never notify.
+    pub fn apply(&mut self, e: HookEvent, at: DateTime<Utc>, seen: DateTime<Utc>, quiet: bool, finished_on: bool) -> Option<Notice> {
         let id = e.session_id;
         let waiting = self.entries.iter().any(|x| x.session_id == id && x.status == Status::NeedsYou);
         if waiting && matches!(e.kind, Kind::NeedsYou(_)) {
@@ -122,7 +123,7 @@ impl Sessions {
                 return None;
             }
         };
-        self.entries.push(Entry { session_id: id, project: p, status, since: at });
+        self.entries.push(Entry { session_id: id, project: p, status, since: seen });
         notice.filter(|_| !quiet)
     }
 
@@ -135,7 +136,7 @@ impl Sessions {
     pub fn expire(&mut self, now: DateTime<Utc>) -> bool {
         let before = self.entries.len();
         self.entries.retain(|x| x.status != Status::Finished || now - x.since < FINISHED_FOR);
-        // Sessions that never sent SessionEnd must not grow this map forever.
+        // Sessions that never sent SessionEnd must not grow this map forever (rough: mixes clocks).
         self.prompts.retain(|_, t| now - *t < MAX_FILE_AGE);
         self.entries.len() != before
     }
@@ -143,9 +144,10 @@ impl Sessions {
     /// Newest first, at most 5.
     #[allow(dead_code)] // shown by the panel (Task 9)
     pub fn rows(&self) -> Vec<SessionRow> {
-        let mut rows: Vec<&Entry> = self.entries.iter().collect();
-        rows.sort_by(|a, b| b.since.cmp(&a.since));
-        rows.into_iter()
+        // Entries are pushed as they are seen, so the newest are last.
+        self.entries
+            .iter()
+            .rev()
             .take(MAX_ROWS)
             .map(|x| SessionRow {
                 project: x.project.clone(),
@@ -171,18 +173,20 @@ fn name_time(name: &str) -> Option<DateTime<Utc>> {
     digits.parse::<i64>().ok().map(DateTime::from_timestamp_nanos)
 }
 
-/// Reads and deletes every `*.json` event in `dir`, oldest name first, as (event, time, quiet).
-/// Skips `.tmp` files still being written; deletes anything older than a day unread. Files
-/// from more than 10 min before `started` are dropped; the rest from before it are quiet.
-pub fn take_files(dir: &Path, started: DateTime<Utc>, now: DateTime<Utc>) -> Vec<(HookEvent, DateTime<Utc>, bool)> {
+/// Reads and deletes every `*.json` event in `dir`, oldest name first, as (event, name time,
+/// quiet). Skips `.tmp` files still being written. Ages use the file's modified time (the
+/// Windows clock; name times come from the writer's clock, which can lag after sleep): anything
+/// older than a day is deleted unread. On the `first` scan after start, files older than 10 min
+/// are dropped and the rest are quiet; files found by later scans are loud.
+pub fn take_files(dir: &Path, first: bool, now: DateTime<Utc>) -> Vec<(HookEvent, DateTime<Utc>, bool)> {
     let Ok(read) = std::fs::read_dir(dir) else { return Vec::new() };
     let mut names: Vec<String> = read.filter_map(|e| e.ok()?.file_name().into_string().ok()).collect();
     names.sort();
     let mut out = Vec::new();
     for name in names {
         let path = dir.join(&name);
-        let at = name_time(&name).unwrap_or(now);
-        if now - at > MAX_FILE_AGE {
+        let modified = std::fs::metadata(&path).and_then(|m| m.modified()).map_or(now, DateTime::<Utc>::from);
+        if now - modified > MAX_FILE_AGE {
             let _ = std::fs::remove_file(&path);
             continue;
         }
@@ -190,13 +194,12 @@ pub fn take_files(dir: &Path, started: DateTime<Utc>, now: DateTime<Utc>) -> Vec
             continue;
         }
         let text = std::fs::read_to_string(&path);
-        // Unreadable or not, the file is done with; a stuck file would be re-read every second.
-        let _ = std::fs::remove_file(&path);
-        if at < started - START_GRACE {
+        // Applied only once deleted: a file that stays would otherwise toast every second.
+        if std::fs::remove_file(&path).is_err() || (first && now - modified > START_GRACE) {
             continue;
         }
         if let Some(e) = text.ok().as_deref().and_then(parse_event) {
-            out.push((e, at, at < started));
+            out.push((e, name_time(&name).unwrap_or(now), first));
         }
     }
     out
@@ -236,32 +239,32 @@ mod tests {
     fn short_reply_is_quiet_long_reply_toasts() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        assert_eq!(s.apply(ev("a", Kind::Prompt), t, false, true), None);
-        assert_eq!(s.apply(ev("a", Kind::Finished), t + Duration::seconds(59), false, true), None);
+        assert_eq!(s.apply(ev("a", Kind::Prompt), t, t, false, true), None);
+        assert_eq!(s.apply(ev("a", Kind::Finished), t + Duration::seconds(59), t + Duration::seconds(59), false, true), None);
         assert_eq!(s.rows().len(), 1);
         assert_eq!(s.rows()[0].status, "finished");
         let mut s = Sessions::default();
-        s.apply(ev("a", Kind::Prompt), t, false, true);
-        let n = s.apply(ev("a", Kind::Finished), t + Duration::seconds(60), false, true);
+        s.apply(ev("a", Kind::Prompt), t, t, false, true);
+        let n = s.apply(ev("a", Kind::Finished), t + Duration::seconds(60), t + Duration::seconds(60), false, true);
         assert_eq!(
             n,
             Some(Notice { title: "Claude finished".into(), body: "own".into(), flash: "own finished".into() })
         );
         // No prompt seen (app started mid-task) counts as long.
         let mut s = Sessions::default();
-        assert!(s.apply(ev("b", Kind::Finished), t, false, true).is_some());
+        assert!(s.apply(ev("b", Kind::Finished), t, t, false, true).is_some());
     }
 
     #[test]
     fn needs_you_toasts_once() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        let n = s.apply(ev("a", needs()), t, false, true).unwrap();
+        let n = s.apply(ev("a", needs()), t, t, false, true).unwrap();
         assert_eq!(n.title, "Claude needs you");
         assert_eq!(n.flash, "own needs you");
         assert!(n.body.starts_with("own"));
         assert!(n.body.contains('m'));
-        assert_eq!(s.apply(ev("a", needs()), t + Duration::seconds(5), false, true), None);
+        assert_eq!(s.apply(ev("a", needs()), t + Duration::seconds(5), t + Duration::seconds(5), false, true), None);
         assert_eq!(s.rows().len(), 1);
         assert_eq!(s.rows()[0].status, "needs_you");
         assert_eq!(s.rows()[0].since_ms, t.timestamp_millis());
@@ -271,15 +274,15 @@ mod tests {
     fn prompt_and_end_clear() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        s.apply(ev("a", needs()), t, false, true);
-        s.apply(ev("a", Kind::Prompt), t, false, true);
+        s.apply(ev("a", needs()), t, t, false, true);
+        s.apply(ev("a", Kind::Prompt), t, t, false, true);
         assert!(s.rows().is_empty());
-        s.apply(ev("a", Kind::Finished), t, false, true);
-        s.apply(ev("a", Kind::End), t, false, true);
+        s.apply(ev("a", Kind::Finished), t, t, false, true);
+        s.apply(ev("a", Kind::End), t, t, false, true);
         assert!(s.rows().is_empty());
         // Stop after needs-you replaces it with finished.
-        s.apply(ev("b", needs()), t, false, true);
-        s.apply(ev("b", Kind::Finished), t, false, true);
+        s.apply(ev("b", needs()), t, t, false, true);
+        s.apply(ev("b", Kind::Finished), t, t, false, true);
         assert_eq!(s.rows()[0].status, "finished");
     }
 
@@ -287,12 +290,12 @@ mod tests {
     fn finished_clears_on_seen_and_after_30_min() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        s.apply(ev("a", Kind::Finished), t, false, true);
-        s.apply(ev("b", needs()), t, false, true);
+        s.apply(ev("a", Kind::Finished), t, t, false, true);
+        s.apply(ev("b", needs()), t, t, false, true);
         s.seen();
         assert_eq!(s.rows().len(), 1);
         assert_eq!(s.rows()[0].status, "needs_you");
-        s.apply(ev("a", Kind::Finished), t, false, true);
+        s.apply(ev("a", Kind::Finished), t, t, false, true);
         assert!(!s.expire(t + Duration::minutes(29)));
         assert!(s.expire(t + Duration::minutes(30)));
         assert_eq!(s.rows().len(), 1);
@@ -303,17 +306,17 @@ mod tests {
     fn finished_off_drops_stop() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        assert_eq!(s.apply(ev("a", Kind::Finished), t, false, false), None);
+        assert_eq!(s.apply(ev("a", Kind::Finished), t, t, false, false), None);
         assert!(s.rows().is_empty());
-        assert!(s.apply(ev("a", needs()), t, false, false).is_some());
+        assert!(s.apply(ev("a", needs()), t, t, false, false).is_some());
     }
 
     #[test]
     fn quiet_events_never_notice() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        assert_eq!(s.apply(ev("a", needs()), t, true, true), None);
-        assert_eq!(s.apply(ev("b", Kind::Finished), t, true, true), None);
+        assert_eq!(s.apply(ev("a", needs()), t, t, true, true), None);
+        assert_eq!(s.apply(ev("b", Kind::Finished), t, t, true, true), None);
         assert_eq!(s.rows().len(), 2);
     }
 
@@ -321,8 +324,8 @@ mod tests {
     fn same_project_two_sessions() {
         let t = Utc::now();
         let mut s = Sessions::default();
-        s.apply(ev("a", needs()), t, false, true);
-        s.apply(ev("b", Kind::Finished), t + Duration::seconds(1), false, true);
+        s.apply(ev("a", needs()), t, t, false, true);
+        s.apply(ev("b", Kind::Finished), t + Duration::seconds(1), t + Duration::seconds(1), false, true);
         assert_eq!(s.rows().len(), 2);
         assert_eq!(s.attention(), 2);
         assert_eq!(s.rows()[0].status, "finished"); // newest first
@@ -333,7 +336,7 @@ mod tests {
         let t = Utc::now();
         let mut s = Sessions::default();
         for i in 0..7 {
-            s.apply(ev(&i.to_string(), needs()), t + Duration::seconds(i), false, true);
+            s.apply(ev(&i.to_string(), needs()), t + Duration::seconds(i), t + Duration::seconds(i), false, true);
         }
         assert_eq!(s.rows().len(), 5);
         assert_eq!(s.rows()[0].since_ms, (t + Duration::seconds(6)).timestamp_millis());
@@ -350,31 +353,96 @@ mod tests {
     }
 
     #[test]
+    fn finished_age_and_expiry_use_the_time_seen() {
+        // The WSL clock (file names) can lag Windows after sleep; only the 60 s rule uses it.
+        let seen = Utc::now();
+        let wsl = seen - Duration::hours(2);
+        let mut s = Sessions::default();
+        s.apply(ev("a", Kind::Prompt), wsl, seen, false, true);
+        assert!(s.apply(ev("a", Kind::Finished), wsl + Duration::seconds(30), seen, false, true).is_none());
+        assert_eq!(s.rows()[0].since_ms, seen.timestamp_millis());
+        assert!(!s.expire(seen + Duration::minutes(29)));
+        assert!(s.expire(seen + Duration::minutes(30)));
+    }
+
+    struct Scratch(std::path::PathBuf);
+
+    impl Scratch {
+        fn new(name: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("notch-events-{}-{name}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            Scratch(dir)
+        }
+        /// Writes a Stop event for `sid` with the given modified time.
+        fn put(&self, file: &str, sid: &str, modified: DateTime<Utc>) {
+            let path = self.0.join(file);
+            std::fs::write(&path, format!(r#"{{"session_id":"{sid}","cwd":"/p","hook_event_name":"Stop"}}"#)).unwrap();
+            let f = std::fs::File::options().write(true).open(&path).unwrap();
+            f.set_modified(modified.into()).unwrap();
+        }
+        fn left(&self) -> Vec<String> {
+            let mut v: Vec<String> =
+                std::fs::read_dir(&self.0).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+            v.sort();
+            v
+        }
+    }
+
+    impl Drop for Scratch {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn ids(got: &[(HookEvent, DateTime<Utc>, bool)]) -> Vec<(&str, bool)> {
+        got.iter().map(|(e, _, q)| (e.session_id.as_str(), *q)).collect()
+    }
+
+    #[test]
     fn take_files_order_age_and_cleanup() {
-        let dir = std::env::temp_dir().join(format!("notch-events-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        let started = Utc::now() - Duration::minutes(30);
+        let d = Scratch::new("order");
         let now = Utc::now();
         let ns = |t: DateTime<Utc>| t.timestamp_nanos_opt().unwrap();
-        let body = |name: &str| format!(r#"{{"session_id":"{name}","cwd":"/p","hook_event_name":"Stop"}}"#);
-        let write = |file: String, sid: &str| std::fs::write(dir.join(file), body(sid)).unwrap();
-        write(format!("{}-1.json", ns(now - Duration::days(2))), "old");
-        write(format!("{}-1.json", ns(started - Duration::minutes(11))), "dropped");
-        write(format!("{}-1.json", ns(now - Duration::seconds(5))), "new");
-        write(format!("{}-1.json", ns(started - Duration::minutes(5))), "quiet");
-        write(format!("{}-2.tmp", ns(now)), "tmp");
-        write("bad.json".into(), "noname");
-        std::fs::write(dir.join(format!("{}-3.json", ns(now - Duration::seconds(1)))), "{").unwrap();
+        let name = |t: DateTime<Utc>, ext: &str| format!("{}-1.{ext}", ns(t));
+        d.put(&name(now - Duration::seconds(9), "json"), "old", now - Duration::days(2));
+        d.put(&name(now - Duration::seconds(8), "json"), "dropped", now - Duration::minutes(11));
+        d.put(&name(now - Duration::seconds(5), "json"), "second", now - Duration::seconds(5));
+        d.put(&name(now - Duration::seconds(7), "json"), "first", now - Duration::minutes(5));
+        // Name time (WSL clock) far off but modified now: kept, not deleted as old.
+        d.put(&name(now - Duration::days(3), "json"), "skewed", now);
+        d.put(&name(now - Duration::days(3), "tmp"), "stale-tmp", now - Duration::days(2));
+        d.put(&name(now, "tmp"), "tmp", now);
+        d.put("bad.json", "noname", now);
+        std::fs::write(d.0.join(name(now - Duration::seconds(1), "json")), "{").unwrap();
 
-        let got = take_files(&dir, started, now);
-        let ids: Vec<(&str, bool)> = got.iter().map(|(e, _, q)| (e.session_id.as_str(), *q)).collect();
-        assert_eq!(ids, vec![("quiet", true), ("new", false), ("noname", false)]);
-        assert_eq!(got[1].1.timestamp_nanos_opt().unwrap() / 1000, ns(now - Duration::seconds(5)) / 1000);
-        assert_eq!(got[2].1, now); // unparseable name counts as now
-        let left: Vec<String> =
-            std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
-        assert_eq!(left, vec![format!("{}-2.tmp", ns(now))]);
-        let _ = std::fs::remove_dir_all(&dir);
+        // First scan after start: older than 10 min dropped, the rest quiet; oldest name first.
+        let got = take_files(&d.0, true, now);
+        let all_quiet = vec![("skewed", true), ("first", true), ("second", true), ("noname", true)];
+        assert_eq!(ids(&got), all_quiet);
+        assert_eq!(got[2].1.timestamp_nanos_opt().unwrap() / 1000, ns(now - Duration::seconds(5)) / 1000);
+        assert_eq!(got[3].1, now); // unparseable name counts as now
+        assert_eq!(d.left(), vec![name(now, "tmp")]);
+
+        // Later scans: every new file is loud, however old its modified time.
+        d.put(&name(now, "json"), "late", now - Duration::minutes(20));
+        assert_eq!(ids(&take_files(&d.0, false, now)), vec![("late", false)]);
+    }
+
+    /// A file that cannot be deleted yet is not applied, so it cannot toast every second; it
+    /// is applied once when the delete works. Windows only: the lock is a Windows share mode.
+    #[cfg(windows)]
+    #[test]
+    fn undeletable_file_is_applied_once_deleted() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let d = Scratch::new("locked");
+        d.put("1-1.json", "a", Utc::now());
+        // Held open with read sharing only (FILE_SHARE_READ), as another process might.
+        let lock = std::fs::OpenOptions::new().read(true).share_mode(1).open(d.0.join("1-1.json")).unwrap();
+        assert!(take_files(&d.0, false, Utc::now()).is_empty());
+        assert!(take_files(&d.0, false, Utc::now()).is_empty());
+        drop(lock);
+        assert_eq!(ids(&take_files(&d.0, false, Utc::now())), vec![("a", false)]);
+        assert!(take_files(&d.0, false, Utc::now()).is_empty());
     }
 }

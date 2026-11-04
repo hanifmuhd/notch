@@ -196,24 +196,32 @@ fn sessions_seen(app: AppHandle, state: State<AppState>) -> ViewModel {
 }
 
 /// Every second reads new hook event files into the session list (spec 5.2), then emits and
-/// toasts with no state lock held. `started` is the app start, for the stale-file rules.
-fn track_events(app: AppHandle, started: DateTime<Utc>) {
-    std::thread::spawn(move || loop {
-        std::thread::sleep(EVENTS_POLL);
-        let state = app.state::<AppState>();
-        let now = Utc::now();
-        let taken = events::take_files(&state.events_dir(), started, now);
-        let read_any = !taken.is_empty();
-        let notices = state.apply_events(taken);
-        if state.expire_sessions(now) || read_any {
-            let flashes: Vec<&str> = notices.iter().map(|n| n.flash.as_str()).collect();
-            let announce = (!flashes.is_empty()).then(|| flashes.join(". "));
-            emit_flash(&app, announce, flashes.last().map(|f| f.to_string()));
-        }
-        for n in notices {
-            toast(&app, n.title, n.body);
+/// toasts with no state lock held. The first scan, at start, picks up files left from before.
+fn track_events(app: AppHandle) {
+    std::thread::spawn(move || {
+        let mut first = true;
+        loop {
+            scan_events(&app, first);
+            first = false;
+            std::thread::sleep(EVENTS_POLL);
         }
     });
+}
+
+fn scan_events(app: &AppHandle, first: bool) {
+    let state = app.state::<AppState>();
+    let now = Utc::now();
+    let taken = events::take_files(&state.events_dir(), first, now);
+    let read_any = !taken.is_empty();
+    let notices = state.apply_events(taken, now);
+    if state.expire_sessions(now) || read_any {
+        let flashes: Vec<&str> = notices.iter().map(|n| n.flash.as_str()).collect();
+        let announce = (!flashes.is_empty()).then(|| flashes.join(". "));
+        emit_flash(app, announce, flashes.last().map(|f| f.to_string()));
+    }
+    for n in notices {
+        toast(app, n.title, n.body);
+    }
 }
 
 #[tauri::command]
@@ -424,15 +432,14 @@ fn main() {
             sessions_seen
         ])
         .setup(|app| {
-            let started = Utc::now();
             let path = app.path().app_config_dir()?.join("settings.json");
             app.manage(AppState::new(settings::load(&path), path));
             // The hooks only write into an existing folder, so it must exist before they fire.
             if let Err(e) = std::fs::create_dir_all(app.state::<AppState>().events_dir()) {
                 eprintln!("hooks: events folder: {e}");
             }
-            track_events(app.handle().clone(), started);
             tray::build(app.handle())?;
+            track_events(app.handle().clone());
             apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
             #[cfg(debug_assertions)]
             if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
