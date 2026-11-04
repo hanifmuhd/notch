@@ -20,7 +20,8 @@ pub enum Source {
 #[derive(Debug, Clone, PartialEq)]
 pub enum RunError {
     Timeout,
-    Exit(i32, String),
+    /// Exit code, stderr, stdout: a logged-out claude may print its JSON error on stdout.
+    Exit(i32, String, String),
     Spawn(String),
 }
 
@@ -85,7 +86,7 @@ impl Runner for SystemRunner {
         if status.success() {
             Ok(decode_output(&out))
         } else {
-            Err(RunError::Exit(status.code().unwrap_or(-1), decode_output(&err)))
+            Err(RunError::Exit(status.code().unwrap_or(-1), decode_output(&err), decode_output(&out)))
         }
     }
 }
@@ -266,7 +267,7 @@ mod tests {
     }
 
     fn fail() -> Result<String, RunError> {
-        Err(RunError::Exit(1, String::new()))
+        Err(RunError::Exit(1, String::new(), String::new()))
     }
 
     #[test]

@@ -92,9 +92,11 @@ function render(vm) {
   renderPill(vm);
   fitClosed();
   const noClaude = vm.pill === 'no_claude';
+  // Logged out hides the old numbers too; the footer text carries the log-in hint.
+  const hideLimits = noClaude || vm.pill === 'logged_out';
   $('#notice').hidden = !noClaude;
   for (const key of ['session', 'week']) {
-    $(`[data-limit="${key}"]`).hidden = noClaude;
+    $(`[data-limit="${key}"]`).hidden = hideLimits;
     renderLimit(key, vm[key]);
   }
   $('#updated').textContent = vm.refreshing ? 'Updating…' : noClaude ? '' : vm.updated_text;

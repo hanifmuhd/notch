@@ -186,7 +186,11 @@ pub fn fetch(state: &AppState, runner: &dyn Runner) -> Fetched {
             Err(UsageError::LoggedOut) => Fetched::LoggedOut,
             Err(_) => Fetched::Failed,
         },
-        Err(RunError::Exit(_, stderr)) if looks_logged_out(&stderr) => Fetched::LoggedOut,
+        Err(RunError::Exit(_, stderr, stdout))
+            if looks_logged_out(&stderr) || parse_usage(&stdout, Utc::now()) == Err(UsageError::LoggedOut) =>
+        {
+            Fetched::LoggedOut
+        }
         Err(_) => Fetched::Failed,
     }
 }
@@ -296,7 +300,7 @@ mod tests {
     }
 
     fn no_claude_on_windows() -> Result<String, RunError> {
-        Err(RunError::Exit(1, String::new()))
+        Err(RunError::Exit(1, String::new(), String::new()))
     }
 
     fn no_distro_running() -> FakeRunner {
@@ -311,12 +315,28 @@ mod tests {
         let r = FakeRunner {
             map: vec![(
                 "cmd.exe /d /c claude -p --settings {\"disableAllHooks\":true} --output-format json /usage",
-                Err(RunError::Exit(1, "Please run /login".into())),
+                Err(RunError::Exit(1, "Please run /login".into(), String::new())),
             )],
             calls: RefCell::new(vec![]),
         };
         let s = state();
         assert!(matches!(fetch(&s, &r), Fetched::LoggedOut));
+    }
+
+    #[test]
+    fn exit_with_login_json_on_stdout_is_logged_out() {
+        let out = r#"{"is_error":true,"result":"Invalid API key · Please run /login"}"#;
+        let r = FakeRunner {
+            map: vec![(
+                "cmd.exe /d /c claude -p --settings {\"disableAllHooks\":true} --output-format json /usage",
+                Err(RunError::Exit(1, String::new(), out.into())),
+            )],
+            calls: RefCell::new(vec![]),
+        };
+        assert!(matches!(fetch(&state(), &r), Fetched::LoggedOut));
+        let other = RunError::Exit(1, "boom".into(), r#"{"is_error":true,"result":"rate limited"}"#.into());
+        let r = FakeRunner { map: vec![(r.map[0].0, Err(other))], calls: RefCell::new(vec![]) };
+        assert!(matches!(fetch(&state(), &r), Fetched::Failed));
     }
 
     #[test]
