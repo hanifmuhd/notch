@@ -53,6 +53,8 @@ pub struct ViewModel {
     pub attention: usize,
     /// The session shown in the pod beside the notch (working or needs you).
     pub pod: Option<Pod>,
+    /// "top", "taskbar" or "taskbar_mini"; set by main.rs from the taskbar measurement.
+    pub mode: &'static str,
 }
 
 /// A reading older than this counts as stale even if the last refresh worked (e.g. after sleep).
@@ -232,7 +234,7 @@ pub fn build(
             }
         }
     };
-    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0, pod: None }
+    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0, pod: None, mode: "top" }
 }
 
 #[cfg(test)]

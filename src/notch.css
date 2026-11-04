@@ -194,6 +194,20 @@ button { font: inherit; color: inherit; }
 .notch.is-needs .pill, .notch.is-needs .panel { animation: breathe 2.4s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { box-shadow: 0 0 0 0 #f0a54100; } 50% { box-shadow: 0 2px 16px 1px #f0a54152; } }
 
+/* ---------- taskbar mode (spec 5.5): a capsule in the taskbar that grows upward ---------- */
+
+/* the window's bottom-right corner sits on the taskbar, just left of the tray */
+.notch[data-mode^="taskbar"] { top: auto; bottom: 8px; left: auto; right: 0; transform: none; }
+.notch[data-mode^="taskbar"] .pill { min-width: 0; border-radius: 16px; box-shadow: 0 0 0 1px #ffffff14; }
+.notch[data-mode^="taskbar"] .pill::before, .notch[data-mode^="taskbar"] .pill::after,
+.notch[data-mode^="taskbar"] .panel::before, .notch[data-mode^="taskbar"] .panel::after { display: none; }
+.notch[data-mode^="taskbar"] .panel { top: auto; bottom: 0; left: auto; right: 0; transform: none; border-radius: 16px; }
+.notch[data-mode^="taskbar"].is-open .panel { border-radius: 24px; }
+.notch[data-mode^="taskbar"] .pod { left: auto; right: calc(100% + 8px); top: 3px; transform-origin: right center; box-shadow: 0 0 0 1px #ffffff14; }
+/* tight taskbar: rings only; hover still opens the full panel */
+.notch[data-mode="taskbar_mini"] .pill { padding: 0 6px; gap: 0; }
+.notch[data-mode="taskbar_mini"] .ear__pct, .notch[data-mode="taskbar_mini"] .ear--right { display: none; }
+
 /* ---------- settings view (inside the same panel) ---------- */
 
 .settings__head { display: flex; align-items: center; gap: 4px; margin: -6px 0 8px -10px; }

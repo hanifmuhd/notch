@@ -11,6 +11,7 @@ mod pace;
 mod placement;
 mod settings;
 mod source;
+mod taskbar;
 mod tray;
 mod usage;
 mod view;
@@ -41,6 +42,32 @@ const EVENTS_POLL: Duration = Duration::from_secs(1);
 
 /// Physical rect of the notch window and its scale, set by `place_window`, read by the pointer loop.
 static WINDOW_RECT: Mutex<Option<(Rect, f64)>> = Mutex::new(None);
+/// Where the notch shows right now (spec 5.5): top, or in the taskbar full or rings-only, plus
+/// the taskbar it was measured from. Decided by `track_taskbar`.
+static MODE: Mutex<(Mode, Option<taskbar::Taskbar>)> = Mutex::new((Mode::Top, None));
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Mode {
+    Top,
+    Taskbar,
+    TaskbarMini,
+}
+
+impl Mode {
+    fn name(self) -> &'static str {
+        match self {
+            Mode::Top => "top",
+            Mode::Taskbar => "taskbar",
+            Mode::TaskbarMini => "taskbar_mini",
+        }
+    }
+}
+
+/// Capsule widths and the gap kept to the icons and the tray, logical px.
+const CAPSULE_FULL: f64 = 150.0;
+const CAPSULE_MINI: f64 = 44.0;
+const CAPSULE_MARGIN: f64 = 8.0;
+
 /// Rectangles of the visible shape, CSS px relative to the window (from the webview).
 static HIT_RECTS: Mutex<Vec<hit::HitRect>> = Mutex::new(Vec::new());
 
@@ -90,6 +117,7 @@ fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
 fn emit_flash(app: &AppHandle, announce: Option<String>, flash: Option<String>) -> ViewModel {
     let mut vm = app.state::<AppState>().view(Local::now(), announce);
     vm.flash = flash;
+    vm.mode = mode().0.name();
     #[cfg(debug_assertions)]
     eprintln!("usage-updated {}", serde_json::to_string(&vm).unwrap_or_default());
     let _ = app.emit("usage-updated", &vm);
@@ -127,7 +155,51 @@ fn refresh(app: &AppHandle) {
 
 #[tauri::command]
 fn get_view(state: State<AppState>) -> ViewModel {
-    state.view(Local::now(), None)
+    let mut vm = state.view(Local::now(), None);
+    vm.mode = mode().0.name();
+    vm
+}
+
+fn mode() -> (Mode, Option<taskbar::Taskbar>) {
+    *MODE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Decides top / taskbar / rings-only from the setting and a fresh taskbar measurement, and
+/// re-places the window when that changes. Runs off the main thread (UI Automation is slow-ish).
+fn update_mode(app: &AppHandle) {
+    let want_taskbar = app.try_state::<AppState>().is_some_and(|s| s.settings().show_in == settings::ShowIn::Taskbar);
+    #[cfg(windows)]
+    let measured = if want_taskbar { taskbar::measure().filter(|t| t.usable()) } else { None };
+    #[cfg(not(windows))]
+    let measured: Option<taskbar::Taskbar> = None;
+    let scale = app.primary_monitor().ok().flatten().map_or(1.0, |m| m.scale_factor());
+    let px = |v: f64| (v * scale).round() as i32;
+    let next = match measured {
+        Some(t) => match taskbar::fit(t.tray_left - t.apps_right, px(CAPSULE_FULL), px(CAPSULE_MINI), px(CAPSULE_MARGIN)) {
+            taskbar::Fit::Full => Mode::Taskbar,
+            taskbar::Fit::Mini => Mode::TaskbarMini,
+            taskbar::Fit::Top => Mode::Top,
+        },
+        None => Mode::Top,
+    };
+    let changed = {
+        let mut m = MODE.lock().unwrap_or_else(|e| e.into_inner());
+        let changed = m.0 != next || (next != Mode::Top && m.1.map(|t| t.tray_left) != measured.map(|t| t.tray_left));
+        *m = (next, measured);
+        changed
+    };
+    if changed {
+        replace(app);
+        emit(app, None);
+    }
+}
+
+/// Every 2 s keeps the mode right as apps open and close (spec 5.5).
+fn track_taskbar(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        update_mode(&app);
+        std::thread::sleep(Duration::from_secs(2));
+    });
 }
 
 #[tauri::command]
@@ -145,6 +217,8 @@ fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> 
     let old_source = state.snapshot().1;
     let (source_changed, events) = state.save_settings(settings).map_err(|e| e.to_string())?;
     replace(&app);
+    let handle = app.clone();
+    std::thread::spawn(move || update_mode(&handle)); // Show in may have changed
     let vm = emit(&app, announce(&events));
     on_alert(&app, events);
     if source_changed {
@@ -309,11 +383,17 @@ fn place_window(app: &AppHandle) -> Result<(), String> {
         .try_state::<AppState>()
         .map(|s| s.settings())
         .map_or((settings::Position::Centre, None), |s| (s.position, s.screen));
-    let picked = pick_monitor(&list, wanted.as_deref());
+    let (current, bar) = mode();
+    // Taskbar mode always uses the main screen's taskbar (spec 5.5).
+    let picked = if current == Mode::Top { pick_monitor(&list, wanted.as_deref()) } else { pick_monitor(&list, None) };
     let scale = scales[list.iter().position(|s| std::ptr::eq(s, picked)).unwrap_or(0)];
     *NOTCH_MONITOR.lock().unwrap_or_else(|e| e.into_inner()) = Some(picked.0.clone());
     let (pw, ph) = ((w * scale).round() as i32, (h * scale).round() as i32);
-    let (x, y) = notch_origin(picked.1, scale, position, pw);
+    let (x, y) = match (current, bar) {
+        // The capsule sits at the window's bottom-right, just left of the tray; the panel grows up.
+        (Mode::Taskbar | Mode::TaskbarMini, Some(t)) => (t.tray_left - (CAPSULE_MARGIN * scale).round() as i32 - pw, t.bottom - ph),
+        _ => notch_origin(picked.1, scale, position, pw),
+    };
     #[cfg(debug_assertions)]
     eprintln!("placed logical={w}x{h} physical={pw}x{ph} origin=({x},{y}) monitor={} scale={scale}", picked.0);
     win.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
@@ -408,6 +488,10 @@ fn track_foreground(app: AppHandle) {
             if stays_behind(&app) {
                 sink(notch);
             }
+            // In the taskbar, clicking the taskbar raises it over the capsule: lift ours again.
+            if mode().0 != Mode::Top {
+                lift(notch);
+            }
         }
     });
 }
@@ -425,6 +509,13 @@ fn stays_behind(app: &AppHandle) -> bool {
 fn sink(hwnd: windows::Win32::Foundation::HWND) {
     use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
     let _ = unsafe { SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE) };
+}
+
+/// Puts the notch back on top of other topmost windows (the taskbar) without activating it.
+#[cfg(windows)]
+fn lift(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+    let _ = unsafe { SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE) };
 }
 
 /// Always on top, or at the bottom when "Stay behind windows" applies (spec 5.6).
@@ -553,6 +644,7 @@ fn main() {
                     let _ = w.set_ignore_cursor_events(true); // until the pointer is over the shape
                 }
                 track_pointer(app.handle().clone());
+                track_taskbar(app.handle().clone());
                 track_foreground(app.handle().clone());
                 track_fullscreen(app.handle().clone());
             }

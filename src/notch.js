@@ -171,6 +171,7 @@ function renderSessions(vm) {
 
 function render(vm) {
   lastVm = vm;
+  notch.dataset.mode = vm.mode || 'top';
   renderPill(vm);
   renderPod(vm);
   renderDial(vm);
@@ -230,8 +231,13 @@ function reportHits() {
     const w = parseFloat(getComputedStyle(notch).getPropertyValue('--open-w')) || panel.offsetWidth;
     const h = $('#panel-inner').scrollHeight;
     const align = notch.dataset.align || 'centre';
-    const left = align === 'left' ? r.left : align === 'right' ? r.right - w : r.left + r.width / 2 - w / 2;
-    rects.push(box({ left, top: 0, width: w, height: Math.max(h, r.height) }));
+    if ((notch.dataset.mode || 'top') !== 'top') {
+      // taskbar: the panel is anchored bottom-right and grows up
+      rects.push(box({ left: r.right - w, top: r.bottom - Math.max(h, r.height), width: w, height: Math.max(h, r.height) }));
+    } else {
+      const left = align === 'left' ? r.left : align === 'right' ? r.right - w : r.left + r.width / 2 - w / 2;
+      rects.push(box({ left, top: 0, width: w, height: Math.max(h, r.height) }));
+    }
   }
   if (!pod.hidden && !isOpen) rects.push(box(pod.getBoundingClientRect()));
   const key = JSON.stringify(rects);
