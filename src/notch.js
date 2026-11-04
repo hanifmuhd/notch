@@ -133,7 +133,7 @@ function render(vm) {
   lastVm = vm;
   renderPill(vm);
   renderSessions(vm);
-  fitClosed();
+  reportHits();
   const noClaude = vm.pill === 'no_claude';
   // Logged out hides the old numbers too; the footer text carries the log-in hint.
   const hideLimits = noClaude || vm.pill === 'logged_out';
@@ -166,17 +166,24 @@ let fadeTimer;
 
 let closing = false;
 let ageTimer;
-let sentWidth = 0;
 
-const sizePanel = () => call('set_panel_open', { open: true, height: Math.ceil(panel.offsetHeight) });
-
-// Closed, the window is exactly the pill, so clicks beside it reach the app below (spec 5.7).
-function fitClosed() {
-  if (isOpen || closing) return;
-  const width = Math.ceil(parseFloat(getComputedStyle(pill).width));
-  if (width === sentWidth) return;
-  sentWidth = width;
-  call('set_panel_open', { open: false, height: 36, width });
+// The window is a fixed size; only the visible shape takes the mouse (spec 4, approach A).
+// While the panel is open or animating, its full-size box counts, so a spring never runs
+// past the area that takes clicks.
+let sentHits = '';
+function reportHits() {
+  const box = (r) => ({ x: Math.floor(r.left), y: Math.floor(r.top), w: Math.ceil(r.width) + 1, h: Math.ceil(r.height) + 1 });
+  const rects = [box(pill.getBoundingClientRect())];
+  if (isOpen || closing) {
+    const r = panel.getBoundingClientRect(); // may be scaled mid-animation: use its layout size
+    const cx = r.left + r.width / 2;
+    rects.push(box({ left: cx - panel.offsetWidth / 2, top: 0, width: panel.offsetWidth, height: panel.offsetHeight }));
+  }
+  const key = JSON.stringify(rects);
+  if (key === sentHits) return;
+  sentHits = key;
+  window.__hits = rects; // for live checks
+  call('set_hit_rects', { rects });
 }
 
 async function setOpen(open) {
@@ -188,8 +195,8 @@ async function setOpen(open) {
   closing = !open;
   clearInterval(ageTimer);
   if (open) {
-    await sizePanel(); // grow the window before the panel shows
-    if (isOpen) notch.classList.add('is-open');
+    notch.classList.add('is-open');
+    reportHits();
     ageTimer = setInterval(() => { if (lastVm) renderSessions(lastVm); }, 30000);
   } else {
     notch.classList.remove('is-open');
@@ -197,8 +204,7 @@ async function setOpen(open) {
     fadeTimer = setTimeout(() => {
       showView('usage');
       closing = false;
-      sentWidth = 0;
-      fitClosed();
+      reportHits();
     }, FADE_OUT);
   }
 }
@@ -209,7 +215,9 @@ function showView(name, focusEl) {
 }
 
 // The settings view is taller than the usage view, and both change with data.
-new ResizeObserver(() => { if (isOpen) sizePanel(); }).observe(panel);
+new ResizeObserver(reportHits).observe(panel);
+new ResizeObserver(reportHits).observe(pill);
+window.addEventListener('resize', reportHits);
 
 pill.addEventListener('click', () => { pinned = !pinned; setOpen(pinned); });
 // Hover opens the panel over the pill, so a click inside it is the "opened by click" pin.
@@ -274,6 +282,8 @@ function renderSettings(screens) {
   if (settings.source.kind === 'wsl' && !names.includes(settings.source.distro)) names.push(settings.source.distro);
   fillSelect(sourceSel, [['auto', 'Auto'], ['windows', 'Windows'], ...names.map((d) => ['wsl:' + d, 'WSL: ' + d])], sourceValue(settings.source));
   for (const r of document.querySelectorAll('input[name="position"]')) r.checked = r.value === settings.position;
+  notch.dataset.align = settings.position; // the window sits at that edge; the shape follows
+  reportHits();
   $('#s-start-wsl').checked = settings.start_wsl;
   $('#s-start-wsl-row').hidden = settings.source.kind !== 'wsl';
   $('#s-task-finished').checked = settings.task_finished;
@@ -355,6 +365,13 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
     }
     render(e.payload);
     if (e.payload.announce) announce(e.payload.announce);
+  });
+  // Rust tells us when the pointer leaves the shape (input is then ignored, so no mouseleave).
+  // It also says when the pointer arrives: a cursor that stops right after input is switched on
+  // never sends mouseenter.
+  await listen('pointer', (e) => {
+    if (e.payload) setOpen(true);
+    else if (!pinned) { clearTimeout(closeTimer); closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY); }
   });
   // The tray can change show_notch; take the file's settings so the next save does not undo it.
   await listen('settings-changed', async () => {

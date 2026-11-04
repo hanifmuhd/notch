@@ -12,8 +12,8 @@
       {
         "label": "notch",
         "title": "Claude Notch",
-        "width": 220,
-        "height": 36,
+        "width": 860,
+        "height": 340,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

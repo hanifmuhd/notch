@@ -54,7 +54,12 @@ html { -webkit-font-smoothing: antialiased; }
 body { color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-height: 1.5; }
 
 /* notch */
-.notch { position: absolute; top: 0; left: 50%; width: max-content; transform: translateX(-50%); font-variant-numeric: tabular-nums; } /* max-content: the pill sets the window width, not the other way round */
+.notch { position: absolute; top: 0; left: 50%; width: max-content; transform: translateX(-50%); font-variant-numeric: tabular-nums; }
+/* the fixed window sits at the screen edge for Left/Right; the shape hugs that edge */
+.notch[data-align="left"] { left: 0; transform: none; }
+.notch[data-align="right"] { left: auto; right: 0; transform: none; }
+.notch[data-align="left"] .panel, .notch[data-align="left"].is-open .panel { left: 0; transform: none; transform-origin: top left; }
+.notch[data-align="right"] .panel, .notch[data-align="right"].is-open .panel { left: auto; right: 0; transform: none; transform-origin: top right; } /* max-content: the pill sets the window width, not the other way round */
 .pill {
   display: flex; align-items: center; gap: 16px;
   height: var(--notch-height); padding: 0 var(--notch-pad-x); box-sizing: border-box;

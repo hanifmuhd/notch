@@ -4,6 +4,7 @@ mod alerts;
 mod app_state;
 mod events;
 mod fullscreen;
+mod hit;
 mod hooks;
 mod monitors;
 mod pace;
@@ -32,15 +33,16 @@ use view::ViewModel;
 const REFRESH_EVERY: Duration = Duration::from_secs(300);
 /// How often the refresh loop checks the wall clock; a plain 300 s sleep may not count suspend time.
 const REFRESH_CHECK: Duration = Duration::from_secs(15);
-const CLOSED_SIZE: (f64, f64) = (220.0, 36.0);
-const OPEN_WIDTH: f64 = 320.0;
+/// The notch window never resizes (spec 4, approach A): room for the open panel, the pod and
+/// the glow. CSS animates the shape inside; the pointer loop passes clicks through elsewhere.
+const WINDOW: (f64, f64) = (860.0, 340.0);
 const MONITOR_POLL: Duration = Duration::from_secs(2);
 const EVENTS_POLL: Duration = Duration::from_secs(1);
 
-/// Last logical size placed, so a display change can re-place the window without the webview.
-/// Held for the whole of `place_window`, and `place_window` only runs on the main thread, so a
-/// re-place can never overwrite a newer size with a stale one.
-static LAST_SIZE: Mutex<(f64, f64)> = Mutex::new(CLOSED_SIZE);
+/// Physical rect of the notch window and its scale, set by `place_window`, read by the pointer loop.
+static WINDOW_RECT: Mutex<Option<(Rect, f64)>> = Mutex::new(None);
+/// Rectangles of the visible shape, CSS px relative to the window (from the webview).
+static HIT_RECTS: Mutex<Vec<hit::HitRect>> = Mutex::new(Vec::new());
 
 /// Device name of the monitor `place_window` last put the notch on (what full screen is judged against).
 static NOTCH_MONITOR: Mutex<Option<String>> = Mutex::new(None);
@@ -293,13 +295,11 @@ fn screens(app: &AppHandle) -> (Vec<(String, Rect, bool)>, Vec<f64>) {
         .unzip()
 }
 
-/// Puts the notch, `w` x `h` logical px, on the chosen screen at the chosen position (spec 5.7).
+/// Puts the fixed-size notch window on the chosen screen at the chosen position (spec 5.7).
 /// A missing screen falls back to the primary one. The size is set in physical px of the
 /// target monitor so a monitor with another scale does not leave a wrong-sized window.
-/// `size` None re-places at the size stored under the lock.
-fn place_window(app: &AppHandle, size: Option<(f64, f64)>) -> Result<(), String> {
-    let mut last = LAST_SIZE.lock().unwrap_or_else(|e| e.into_inner());
-    let (w, h) = remember_size(&mut last, size);
+fn place_window(app: &AppHandle) -> Result<(), String> {
+    let (w, h) = WINDOW;
     let win = app.get_webview_window("notch").ok_or("notch window missing")?;
     let (list, scales) = screens(app);
     if list.is_empty() {
@@ -317,39 +317,62 @@ fn place_window(app: &AppHandle, size: Option<(f64, f64)>) -> Result<(), String>
     #[cfg(debug_assertions)]
     eprintln!("placed logical={w}x{h} physical={pw}x{ph} origin=({x},{y}) monitor={} scale={scale}", picked.0);
     win.set_position(PhysicalPosition::new(x, y)).map_err(|e| e.to_string())?;
-    win.set_size(PhysicalSize::new(pw as u32, ph as u32)).map_err(|e| e.to_string())
+    win.set_size(PhysicalSize::new(pw as u32, ph as u32)).map_err(|e| e.to_string())?;
+    // Hit-testing is relative to the webview, which can sit inside an invisible window frame.
+    let inner = win.inner_position().map(|p| (p.x, p.y)).unwrap_or((x, y));
+    *WINDOW_RECT.lock().unwrap_or_else(|e| e.into_inner()) = Some((Rect { x: inner.0, y: inner.1, w: pw, h: ph }, scale));
+    Ok(())
 }
 
-/// Stores `given` if there is one and returns the size to place.
-fn remember_size(slot: &mut (f64, f64), given: Option<(f64, f64)>) -> (f64, f64) {
-    if let Some(size) = given {
-        *slot = size;
-    }
-    *slot
-}
-
-/// Places the window again at its last logical size. Window calls under the `LAST_SIZE` lock
-/// need the main thread, which may itself be waiting for that lock in `set_panel_open`, so the
-/// work is queued to the main thread rather than run on the caller's thread.
+/// Places the window again. Window calls are queued to the main thread, where they belong.
 fn replace(app: &AppHandle) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        let _ = place_window(&handle, None);
+        let _ = place_window(&handle);
     });
 }
 
-/// Resizes the notch for the panel, anchored to its position setting. Closed, the window
-/// takes the pill's measured `width` (its text changes with the state, spec 5.2/5.7).
+/// The webview reports where the visible shape is; only there does the window take the mouse.
 #[tauri::command]
-fn set_panel_open(app: AppHandle, open: bool, height: f64, width: Option<f64>) -> Result<(), String> {
-    let (w, h) = if open {
-        (OPEN_WIDTH, height.clamp(36.0, 600.0))
-    } else {
-        let w = width.filter(|w| w.is_finite()).unwrap_or(CLOSED_SIZE.0);
-        (w.clamp(36.0, 480.0), CLOSED_SIZE.1)
-    };
-    place_window(&app, Some((w, h)))
+fn set_hit_rects(rects: Vec<hit::HitRect>) {
+    *HIT_RECTS.lock().unwrap_or_else(|e| e.into_inner()) = rects;
 }
+
+/// Turns the window's mouse input on only while the pointer is over the shape, so clicks beside
+/// it reach the app below (spec 4, approach A). Polls fast near the window, slowly elsewhere,
+/// and tells the webview when the pointer enters or leaves (it gets no mouseleave once input
+/// is ignored).
+#[cfg(windows)]
+fn track_pointer(app: AppHandle) {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    std::thread::spawn(move || {
+        let mut inside = false;
+        loop {
+            let mut p = POINT::default();
+            let got = unsafe { GetCursorPos(&mut p) }.is_ok();
+            let rect = *WINDOW_RECT.lock().unwrap_or_else(|e| e.into_inner());
+            let (now_inside, near) = match (got, rect, SHOWN.load(Ordering::Relaxed)) {
+                (true, Some((r, scale)), true) => {
+                    let (lx, ly) = (f64::from(p.x - r.x) / scale, f64::from(p.y - r.y) / scale);
+                    let rects = HIT_RECTS.lock().unwrap_or_else(|e| e.into_inner());
+                    let near = p.x >= r.x - 40 && p.x < r.x + r.w + 40 && p.y >= r.y - 40 && p.y < r.y + r.h + 40;
+                    (hit::hit(&rects, lx, ly), near)
+                }
+                _ => (false, false),
+            };
+            if now_inside != inside {
+                inside = now_inside;
+                if let Some(w) = app.get_webview_window("notch") {
+                    let _ = w.set_ignore_cursor_events(!inside);
+                }
+                let _ = app.emit("pointer", inside);
+            }
+            std::thread::sleep(Duration::from_millis(if near { 16 } else { 100 }));
+        }
+    });
+}
+
 
 /// Gives focus back to the window that had it before the notch was clicked.
 #[tauri::command]
@@ -443,7 +466,7 @@ fn main() {
             get_settings,
             save_settings,
             list_screens,
-            set_panel_open,
+            set_hit_rects,
             focus_previous,
             list_distros,
             open_install_page,
@@ -493,6 +516,10 @@ fn main() {
             });
             #[cfg(windows)]
             {
+                if let Some(w) = app.get_webview_window("notch") {
+                    let _ = w.set_ignore_cursor_events(true); // until the pointer is over the shape
+                }
+                track_pointer(app.handle().clone());
                 track_foreground(app.handle().clone());
                 track_fullscreen(app.handle().clone());
             }
@@ -504,7 +531,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{due, remember_size};
+    use super::due;
     use chrono::{Duration, Utc};
 
     #[test]
@@ -515,13 +542,5 @@ mod tests {
         assert!(due(t + Duration::hours(8), t)); // woke from sleep
         assert!(due(t - Duration::hours(1), t)); // clock moved back
         assert!(due(t, chrono::DateTime::<Utc>::MIN_UTC)); // never refreshed
-    }
-
-    #[test]
-    fn re_place_uses_the_stored_size_and_a_new_size_replaces_it() {
-        let mut slot = (220.0, 36.0);
-        assert_eq!(remember_size(&mut slot, None), (220.0, 36.0));
-        assert_eq!(remember_size(&mut slot, Some((320.0, 300.0))), (320.0, 300.0));
-        assert_eq!(remember_size(&mut slot, None), (320.0, 300.0));
     }
 }
