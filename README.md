@@ -51,11 +51,11 @@ Never reads your Claude login; only runs `claude /usage`.
 
 The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format json /usage` (inside WSL when needed), reads the percentages and reset times from the answer, and keeps them on your PC. It does not open your Claude credentials file and does not contact claude.ai or api.anthropic.com itself.
 
-Task alerts use Claude Code's own hooks. Each hook copies the event Claude Code hands it (session id, project folder, event name, message) into a file in the app's folder on your PC, which the app reads and deletes. Nothing is sent anywhere.
+Task alerts use Claude Code's own hooks. Each hook copies the whole event Claude Code hands it into a file in the app's folder on your PC. That copy can include your prompt, Claude's last reply, or the command or file it asked permission for. The app reads each file and deletes it within about a second; files written while the app is closed are deleted at its next start (after a day at most). Nothing is sent anywhere.
 
 ## Uninstall
 
-Turn **Show when Claude needs you** off first, so Claude Code's `settings.json` no longer lists the notch's hooks. If you forget, the hooks do nothing once the app's folder is gone, and you can remove the lines containing `claude-notch` by hand.
+Turn **Show when Claude needs you** off first, so Claude Code's `settings.json` no longer lists the notch's hooks. If you forget, uninstalling still deletes the app's `events` folder, and the leftover hooks then do nothing; you can remove the lines containing `claude-notch` by hand.
 
 ## Build from source
 
