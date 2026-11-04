@@ -187,8 +187,8 @@ mod tests {
     fn reading(session: f64) -> UsageReading {
         let now = Utc::now();
         UsageReading {
-            session: Limit { used_pct: session, resets_at: now + Duration::hours(2) },
-            week: Limit { used_pct: 10.0, resets_at: now + Duration::days(3) },
+            session: Limit { used_pct: session, resets_at: Some(now + Duration::hours(2)) },
+            week: Limit { used_pct: 10.0, resets_at: Some(now + Duration::days(3)) },
             fetched_at: now,
         }
     }

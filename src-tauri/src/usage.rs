@@ -7,7 +7,8 @@ use chrono_tz::Tz;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Limit {
     pub used_pct: f64,
-    pub resets_at: DateTime<Utc>,
+    /// None while the session is idle: Claude prints no `· resets …` part until you next use it.
+    pub resets_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -51,18 +52,25 @@ pub fn parse_usage(raw: &str, fetched_at: DateTime<Utc>) -> Result<UsageReading,
     })
 }
 
-/// `rest` is ` 46% used · resets Oct 28, 8pm (Asia/Kuala_Lumpur)`.
+/// `rest` is ` 46% used · resets Oct 28, 8pm (Asia/Kuala_Lumpur)`, or ` 0% used` when idle.
 fn parse_limit(rest: &str, fetched_at: DateTime<Utc>) -> Result<Limit, UsageError> {
     let bad = |s: &str| UsageError::BadTime(s.to_string());
-    let (pct, reset) = rest.split_once('·').ok_or_else(|| bad(rest))?;
-    let (pct, reset) = (pct.trim(), reset.trim());
+    let (pct, reset) = match rest.split_once('·') {
+        Some((p, r)) => (p.trim(), Some(r.trim())),
+        None => (rest.trim(), None),
+    };
     let used_pct = pct
         .strip_suffix("% used")
         .and_then(|n| n.trim().parse::<f64>().ok())
         .filter(|n| n.is_finite())
         .ok_or_else(|| bad(pct))?;
-    let reset = reset.strip_prefix("resets ").ok_or_else(|| bad(reset))?;
-    let resets_at = parse_reset(reset, fetched_at).ok_or_else(|| bad(reset))?;
+    let resets_at = match reset {
+        None => None,
+        Some(r) => {
+            let r = r.strip_prefix("resets ").ok_or_else(|| bad(r))?;
+            Some(parse_reset(r, fetched_at).ok_or_else(|| bad(r))?)
+        }
+    };
     Ok(Limit { used_pct, resets_at })
 }
 
@@ -122,9 +130,9 @@ mod tests {
     }
     fn assert_fixture_values(r: &UsageReading) {
         assert_eq!(r.session.used_pct, 46.0);
-        assert_eq!(r.session.resets_at, at("2026-10-28T20:00:00+08:00"));
+        assert_eq!(r.session.resets_at, Some(at("2026-10-28T20:00:00+08:00")));
         assert_eq!(r.week.used_pct, 72.0);
-        assert_eq!(r.week.resets_at, at("2026-10-31T10:00:00+08:00"));
+        assert_eq!(r.week.resets_at, Some(at("2026-10-31T10:00:00+08:00")));
         assert_eq!(r.fetched_at, t0());
     }
 
@@ -145,7 +153,7 @@ mod tests {
             "Current session: 46% used · resets Oct 28, 8:30pm (Asia/Kuala_Lumpur)\n{WEEK_LINE}"
         ));
         let got = parse_usage(&r, t0()).unwrap();
-        assert_eq!(got.session.resets_at, at("2026-10-28T20:30:00+08:00"));
+        assert_eq!(got.session.resets_at, Some(at("2026-10-28T20:30:00+08:00")));
     }
 
     #[test]
@@ -154,8 +162,8 @@ mod tests {
             "Current session: 10% used · resets Jan 2, 9am (UTC)\nCurrent week (all models): 20% used · resets Jan 5, 9am (UTC)",
         );
         let got = parse_usage(&r, at("2026-12-30T12:00:00Z")).unwrap();
-        assert_eq!(got.session.resets_at, at("2027-01-02T09:00:00Z"));
-        assert_eq!(got.week.resets_at, at("2027-01-05T09:00:00Z"));
+        assert_eq!(got.session.resets_at, Some(at("2027-01-02T09:00:00Z")));
+        assert_eq!(got.week.resets_at, Some(at("2027-01-05T09:00:00Z")));
     }
 
     #[test]
@@ -194,6 +202,20 @@ mod tests {
             "Current session: 46% used · resets someday (UTC)\n{WEEK_LINE}"
         ));
         assert!(matches!(parse_usage(&bad_time, t0()), Err(UsageError::BadTime(_))));
+    }
+
+    #[test]
+    fn session_without_reset_is_idle() {
+        let r = raw(&format!("Current session: 0% used\n{WEEK_LINE}"));
+        let got = parse_usage(&r, t0()).unwrap();
+        assert_eq!(got.session, Limit { used_pct: 0.0, resets_at: None });
+        assert!(got.week.resets_at.is_some());
+    }
+
+    #[test]
+    fn garbled_reset_part_is_still_bad_time() {
+        let r = raw(&format!("Current session: 0% used · soon\n{WEEK_LINE}"));
+        assert!(matches!(parse_usage(&r, t0()), Err(UsageError::BadTime(_))));
     }
 
     #[test]

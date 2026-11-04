@@ -68,9 +68,11 @@ pub fn level(used_pct: f64, threshold: u8) -> Level {
 }
 
 fn step(armed: &Armed, limit: &Limit, threshold: u8, kind: LimitKind) -> (Armed, Option<AlertEvent>) {
+    // Idle: no window is running, so there is nothing to alert on and nothing to re-arm.
+    let Some(resets_at) = limit.resets_at else { return (armed.clone(), None) };
     let mut a = armed.clone();
-    if limit.resets_at - a.resets_at > Duration::minutes(1) {
-        a = Armed { resets_at: limit.resets_at, ..Armed::default() };
+    if resets_at - a.resets_at > Duration::minutes(1) {
+        a = Armed { resets_at, ..Armed::default() };
     }
     let used = limit.used_pct;
     // Within a window usage never falls, so this only happens when the threshold was raised.
@@ -80,10 +82,10 @@ fn step(armed: &Armed, limit: &Limit, threshold: u8, kind: LimitKind) -> (Armed,
     let event = if used >= 100.0 && !a.fired_full {
         a.fired_full = true;
         a.fired_alert = true;
-        Some(AlertEvent::Full(kind, limit.resets_at))
+        Some(AlertEvent::Full(kind, resets_at))
     } else if used >= f64::from(threshold) && !a.fired_alert {
         a.fired_alert = true;
-        Some(AlertEvent::Crossed(kind, used, limit.resets_at))
+        Some(AlertEvent::Crossed(kind, used, resets_at))
     } else {
         None
     };
@@ -111,8 +113,8 @@ mod tests {
 
     fn reading(session: f64, week: f64, session_reset: DateTime<Utc>) -> UsageReading {
         UsageReading {
-            session: Limit { used_pct: session, resets_at: session_reset },
-            week: Limit { used_pct: week, resets_at: at(30) },
+            session: Limit { used_pct: session, resets_at: Some(session_reset) },
+            week: Limit { used_pct: week, resets_at: Some(at(30)) },
             fetched_at: at(1),
         }
     }
@@ -220,6 +222,19 @@ mod tests {
         assert_eq!(e, vec![AlertEvent::Crossed(LimitKind::Session, 95.0, r)]);
         let (_, e) = evaluate(&s, &reading(95.0, 91.0, r), &T);
         assert_eq!(e, vec![AlertEvent::Crossed(LimitKind::Week, 91.0, at(30))]);
+    }
+
+    #[test]
+    fn idle_limit_never_fires() {
+        let r = at(2);
+        let (s, _) = evaluate(&AlertState::default(), &reading(91.0, 0.0, r), &T);
+        let mut idle = reading(95.0, 0.0, r);
+        idle.session.resets_at = None;
+        let (after, e) = evaluate(&s, &idle, &T);
+        assert!(e.is_empty());
+        assert_eq!(after.session, s.session);
+        let (_, e) = evaluate(&AlertState::default(), &idle, &T);
+        assert!(e.is_empty());
     }
 
     #[test]

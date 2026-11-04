@@ -94,7 +94,8 @@ pub fn tray_toggle_label(show_notch: bool) -> &'static str {
     if show_notch { "Hide notch" } else { "Show notch" }
 }
 
-fn pill_text(name: &str, now: DateTime<Local>, resets_at: DateTime<Utc>) -> String {
+fn pill_text(name: &str, now: DateTime<Local>, resets_at: Option<DateTime<Utc>>) -> String {
+    let Some(resets_at) = resets_at else { return format!("{name} full") };
     match when_text(now, resets_at) {
         w if w == "now" || w.starts_with("in ") => format!("{name} full, back {w}"),
         w => format!("{name} full, back in {w}"),
@@ -104,13 +105,13 @@ fn pill_text(name: &str, now: DateTime<Local>, resets_at: DateTime<Utc>) -> Stri
 fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Local>) -> LimitView {
     let now_utc = now.with_timezone(&Utc);
     let lvl = level(limit.used_pct, threshold);
-    let pace = elapsed_pct(window, now_utc, limit.resets_at);
+    let pace = limit.resets_at.map_or(0.0, |r| elapsed_pct(window, now_utc, r));
     let clamped = limit.used_pct.clamp(0.0, 100.0);
     // Only a Full limit may read 100 %; 99.5 rounds up but is still Alert.
     let shown = if lvl == Level::Full { clamped.round() } else { clamped.round().min(99.0) };
-    let runs_out_text = match lvl {
-        Level::Full => None,
-        _ => runs_out_at(limit.used_pct, window, now_utc, limit.resets_at).map(|t| {
+    let runs_out_text = match (lvl, limit.resets_at) {
+        (Level::Full, _) | (_, None) => None,
+        (_, Some(r)) => runs_out_at(limit.used_pct, window, now_utc, r).map(|t| {
             format!("Runs out around {}", t.with_timezone(&Local).format("%H:%M"))
         }),
     };
@@ -119,8 +120,8 @@ fn limit_view(limit: &Limit, threshold: u8, window: Duration, now: DateTime<Loca
         used_pct: clamped,
         pace_pct: pace,
         level: lvl,
-        reset_text: reset_text(now, limit.resets_at),
-        pace_text: format!("{}% of time passed", pace.round()),
+        reset_text: limit.resets_at.map_or("Starts when you next use Claude".into(), |r| reset_text(now, r)),
+        pace_text: if limit.resets_at.is_some() { format!("{}% of time passed", pace.round()) } else { String::new() },
         runs_out_text,
     }
 }
@@ -200,10 +201,31 @@ mod tests {
 
     fn reading(s_used: f64, w_used: f64, now: DateTime<Local>) -> UsageReading {
         UsageReading {
-            session: Limit { used_pct: s_used, resets_at: utc(now) + Duration::minutes(133) },
-            week: Limit { used_pct: w_used, resets_at: utc(local(30, 9, 0)) },
+            session: Limit { used_pct: s_used, resets_at: Some(utc(now) + Duration::minutes(133)) },
+            week: Limit { used_pct: w_used, resets_at: Some(utc(local(30, 9, 0))) },
             fetched_at: utc(local(28, 10, 51)),
         }
+    }
+
+    #[test]
+    fn idle_limit_view() {
+        let now = local(28, 10, 0);
+        let lv = limit_view(&Limit { used_pct: 0.0, resets_at: None }, 90, SESSION_WINDOW, now);
+        assert_eq!(lv.reset_text, "Starts when you next use Claude");
+        assert_eq!(lv.pace_text, "");
+        assert_eq!(lv.pace_pct, 0.0);
+        assert_eq!(lv.runs_out_text, None);
+        assert_eq!(lv.level, Level::Normal);
+    }
+
+    #[test]
+    fn full_without_reset_pill_has_no_time() {
+        let now = local(28, 10, 0);
+        let mut r = reading(100.0, 10.0, now);
+        r.session.resets_at = None;
+        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
+        assert_eq!(vm.pill, PillState::Full);
+        assert_eq!(vm.pill_text.as_deref(), Some("Session full"));
     }
 
     #[test]
@@ -246,7 +268,7 @@ mod tests {
         let now = local(28, 10, 0);
         let r = reading(80.0, 10.0, now);
         let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
-        let t = runs_out_at(80.0, SESSION_WINDOW, utc(now), r.session.resets_at).unwrap();
+        let t = runs_out_at(80.0, SESSION_WINDOW, utc(now), r.session.resets_at.unwrap()).unwrap();
         let want = format!("Runs out around {}", t.with_timezone(&Local).format("%H:%M"));
         assert_eq!(vm.session.runs_out_text, Some(want));
         // fixed example: the formatter itself
@@ -305,7 +327,7 @@ mod tests {
     fn pill_text_full_session() {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 100.0, now);
-        r.session.resets_at = utc(now) + Duration::minutes(80);
+        r.session.resets_at = Some(utc(now) + Duration::minutes(80));
         let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), now);
         assert_eq!(vm.pill_text.as_deref(), Some("Session full, back in 1h 20m"));
     }
