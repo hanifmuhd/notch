@@ -9,6 +9,7 @@ mod hooks;
 mod monitors;
 mod pace;
 mod placement;
+mod prayer_zones;
 mod settings;
 mod source;
 mod taskbar;
