@@ -354,8 +354,8 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
 // ---------- start ----------
 
 (async () => {
-  // The pill is measured, so every weight must be loaded first (500 is only used when stale).
-  await Promise.all([400, 500, 600].map((w) => document.fonts.load(`${w} 14px "Public Sans"`))).catch(() => {});
+  // The shape is measured for hit-testing, so the font must be loaded first.
+  await Promise.all([500, 600, 700].map((w) => document.fonts.load(`${w} 14px "Manrope"`))).catch(() => {});
   // Listen before the first fetch, so a refresh that finishes meanwhile is neither missed nor its announcement lost.
   await listen('usage-updated', (e) => {
     if (e.payload.flash) {

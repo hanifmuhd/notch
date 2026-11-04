@@ -1,12 +1,11 @@
 /* Hallmark · shape: state sheet · genre: modern-minimal · theme: custom (taste-skill app style data-terminal, seed 1480439416) · job: try · idea: "the window's clock becomes a 1px tick on each meter, so you see if you are using faster than time passes" · vibe: "quiet black notch, precise numbers"
- * paper: oklch(0% 0 0) · accent: oklch(63% 0.13 255) · display: Public Sans · body: Public Sans · hero: the live notch · nav: none · footer: none · imagery: none · signature: the pace tick
+ * paper: oklch(0% 0 0) · accent: oklch(63% 0.13 255) · display: Manrope · body: Manrope · hero: the live notch · nav: none · footer: none · imagery: none · signature: the pace tick
  * axes: absolute/sans/blue · posture: component · contrast: pass · fold: pass · v2.0.0 */
 /* Hallmark · waive 7b · surface: absolute, notch black matches a hardware display cutout · the notch must read as part of the screen bezel, not a tinted card */
 /* Ported from docs/design/notch-mockup.html; demo sheet styles dropped. */
 
-@font-face { font-family: "Public Sans"; font-style: normal; font-weight: 400; font-display: block; src: url("fonts/PublicSans-400.woff2") format("woff2"); }
-@font-face { font-family: "Public Sans"; font-style: normal; font-weight: 500; font-display: block; src: url("fonts/PublicSans-500.woff2") format("woff2"); }
-@font-face { font-family: "Public Sans"; font-style: normal; font-weight: 600; font-display: block; src: url("fonts/PublicSans-600.woff2") format("woff2"); }
+
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500 700; font-display: block; src: url("fonts/Manrope-var.woff2") format("woff2"); }
 
 :root {
   /* primitive */
@@ -19,7 +18,7 @@
   --blue-500: #4a8ad6;
   --amber-500: #d9a441;
   --red-500: #e5566f;
-  --font-sans: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Manrope", "Segoe UI", system-ui, sans-serif;
 
   /* semantic */
   --surface-notch: var(--black);
