@@ -1,6 +1,6 @@
 # Claude Notch
 
-Claude Notch is a small black pill at the top edge of your Windows screen. It shows how much of your Claude 5-hour session limit and weekly limit you have used. Hover over it to see reset times and whether you are using Claude faster than the clock. It warns you before you run out and hides itself while a full-screen app is on the same screen.
+Claude Notch is a small black notch joined to the top edge of your Windows screen (or a capsule in your taskbar). A double ring shows how much of your Claude 5-hour session limit (outside) and weekly limit (inside) you have used, next to the session % and the time until the session resets. Hover over it to see more. It warns you before you run out, shows when a Claude Code session needs you, and hides itself while a full-screen app is on the same screen.
 
 ## Requirements
 
@@ -17,19 +17,23 @@ If Claude Code is not found, the notch says so and links to the install page. It
 
 ## Using it
 
-- Hover over the pill, or click it, or press Enter, to open the panel. Esc closes it.
-- The panel shows a bar for the session and the week, when each resets, and a blue tick for how much of that time has passed. If the fill is past the tick, you are using Claude faster than the clock, and it says when you would run out.
+- Closed: the double ring and your session % on the left, the time until the session resets on the right (`1:32`, or `45m` under an hour). Amber means you passed your alert level, red means full (`back in 1:32`), `ready` means no session is running.
+- Rest the pointer on the notch for a moment, or click it, or press Enter, to open the panel; it grows out of the notch. Esc closes it. Moving past the notch on the way to your browser tabs does not open it.
+- The panel shows the rings large, one line per limit with its reset time, and "Runs out around" when you are using Claude faster than the clock.
 - The gear opens settings. The refresh button updates now; it also updates by itself every 5 minutes.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
-- With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The pill shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
+- With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The notch shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
+- A session that is working shows as a small pod beside the notch with how long it has been running. It turns amber with a bell when it needs you, and a soft amber glow breathes around the notch until you answer. A session that stops sending news (Esc, a crash, a closed terminal) disappears after 10 minutes.
 
 ## Settings
 
 Changes are saved as you make them.
 
+- **Show in**: Top of screen (default) or Taskbar. In the taskbar the notch is a capsule just left of the tray that opens upward. When the taskbar gets crowded it shrinks to the rings, and when there is no room at all it moves to the top until room returns. An auto-hiding or vertical taskbar uses the top.
 - **Show on**: which screen the notch sits on, by the monitor's own name. If that screen is unplugged, it moves to your main screen.
 - **Position**: left, centre or right. Right leaves room for the window buttons.
+- **Stay behind windows**: off by default. On, the notch stays under other windows, so a maximised window covers it instead of the notch covering its title bar. Show on, Position and this setting apply to Top only.
 - **Get usage from**: Auto looks on Windows first, then in each WSL distro. Or pick Windows, or one WSL distro.
 - **Start WSL if it's stopped**: only for a WSL source. When off, the notch will not start WSL and shows old numbers instead.
 - **Show when Claude needs you** (Task alerts): adds the notch's own hooks to Claude Code's `settings.json` for the install it reads usage from, and removes them when you turn it off. Your other hooks stay as they are, and the first change keeps a copy as `settings.json.notch-backup`. It is greyed out until Claude Code is found, or while WSL is stopped and "Start WSL" is off.
@@ -73,13 +77,13 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 
 ### Look and window
 
-1. [ ] Install and start it. You see a black pill about 220 by 36 pixels at the top of your screen, with transparent rounded corners.
-2. [ ] The pill stays above other windows and has no taskbar entry.
+1. [ ] Install and start it. You see a black notch joined to the top of your screen, its sides curving into the edge, with the double ring, your session % and the countdown.
+2. [ ] The notch stays above other windows and has no taskbar entry. The installer, tray and notifications show the ring icon.
 
 ### Panel and click-through
 
-3. [ ] Hover over the pill. The panel opens in place. Move away and it closes.
-4. [ ] Click on the screen just beside the pill. The click reaches the app underneath.
+3. [ ] Rest the pointer on the notch. After a moment the panel grows out of it with a small bounce. Move away and it closes. Sweep the pointer quickly across the notch: it does not open.
+4. [ ] Click on the screen just beside the notch, and below it where the open panel would be. The click reaches the app underneath.
 5. [ ] Open the panel, open a settings drop-down, then click another app. The pinned panel closes.
 6. [ ] With no Claude Code available, click "Install Claude Code to see your limits". The Claude Code setup page opens in your browser.
 
@@ -106,7 +110,7 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 ### Alerts and tray
 
 16. [ ] In settings, lower a threshold below your current usage. You get exactly one Windows notification, and the value turns amber.
-17. [ ] Right-click the tray icon. You see Hide notch, Start with Windows, Refresh now and Quit. Hide notch hides the pill and the item becomes Show notch.
+17. [ ] Right-click the tray icon. You see Hide notch, Start with Windows, Refresh now and Quit. Hide notch hides the notch and the item becomes Show notch.
 18. [ ] Turn on Start with Windows, sign out and back in. The notch is there and the item is still ticked.
 19. [ ] Quit from the tray closes the app.
 
@@ -117,7 +121,7 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 ### Task alerts and follow-ups (v1.1)
 
 21. [ ] Turn on **Show when Claude needs you**. Claude Code's `settings.json` now has five entries containing `claude-notch`, your other hooks are unchanged, and `settings.json.notch-backup` exists.
-22. [ ] In a WSL terminal, ask Claude something that needs permission (for example to create a file). You get a "Claude needs you" notification, the pill shows "<project> needs you" for a few seconds, then a bell with 1.
+22. [ ] In a WSL terminal, ask Claude something that needs permission (for example to create a file). You get a "Claude needs you" notification, the notch shows "<project> needs you" for a few seconds, then a bell with 1.
 23. [ ] Ask something that takes over a minute. When it finishes you get "Claude finished". A quick reply only adds a quiet row in the panel.
 24. [ ] Open and close the panel. Finished rows are gone; "needs you" rows stay until you answer in that terminal.
 25. [ ] The 5-minute usage refresh never adds a "finished" row.
@@ -126,3 +130,12 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 28. [ ] **Show on** lists your monitor by name (for example "MSI MP252 (main)").
 29. [ ] If you have Claude Code on Windows (not WSL), choose it as the source and check the numbers still load. This checks the Windows command quoting, which could not be tested here.
 30. [ ] Log out of Claude Code, refresh. The notch says "Log in to Claude Code" and hides the numbers. Log back in.
+
+### Redesign (v1.2)
+
+31. [ ] Turn off "Animation effects" in Windows (Settings, Accessibility, Visual effects). The panel opens without the bounce or blur, and the needs-you glow becomes a still amber outline.
+32. [ ] With Task alerts on, start a Claude Code reply in a WSL terminal. A pod shows "<project> working" beside the notch with a timer. When Claude asks permission it turns amber with a bell and the notch glows; approve it and the amber goes away within a few seconds.
+33. [ ] Press Esc in the middle of a Claude reply. The pod disappears within 10 minutes.
+34. [ ] Choose Show in: Taskbar. The capsule sits just left of the tray and opens upward. Open many apps until the taskbar is crowded: it shrinks to the rings, then moves to the top when there is no room; close apps and it comes back.
+35. [ ] In Taskbar mode, click an empty part of the taskbar. The capsule stays visible.
+36. [ ] In Top mode, turn on Stay behind windows and maximise a window. The window covers the notch; turn it off and the notch is on top again.
