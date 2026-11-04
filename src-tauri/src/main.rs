@@ -518,6 +518,40 @@ fn lift(hwnd: windows::Win32::Foundation::HWND) {
     let _ = unsafe { SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE) };
 }
 
+/// True when the taskbar sits above `notch` in the window stack.
+#[cfg(windows)]
+fn taskbar_above(notch: windows::Win32::Foundation::HWND) -> bool {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindow, GW_HWNDPREV};
+    let Ok(tb) = (unsafe { FindWindowW(w!("Shell_TrayWnd"), None) }) else { return false };
+    let mut h = unsafe { GetWindow(notch, GW_HWNDPREV) };
+    while let Ok(w) = h {
+        if w == tb {
+            return true;
+        }
+        h = unsafe { GetWindow(w, GW_HWNDPREV) };
+    }
+    false
+}
+
+/// In the taskbar, clicking the taskbar (e.g. Show desktop) raises it over the capsule, and it
+/// raises itself again after the click with no event to hook. Checking every 50 ms and lifting
+/// only when it is above keeps the capsule from vanishing for half a second.
+#[cfg(windows)]
+fn keep_above_taskbar(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        std::thread::sleep(Duration::from_millis(if mode().0 == Mode::Top { 500 } else { 50 }));
+        if mode().0 == Mode::Top {
+            continue;
+        }
+        if let Some(h) = app.get_webview_window("notch").and_then(|w| w.hwnd().ok()) {
+            if taskbar_above(h) {
+                lift(h);
+            }
+        }
+    });
+}
+
 /// Always on top, or at the bottom when "Stay behind windows" applies (spec 5.6).
 fn apply_z_order(app: &AppHandle) {
     let Some(win) = app.get_webview_window("notch") else { return };
@@ -645,6 +679,7 @@ fn main() {
                 }
                 track_pointer(app.handle().clone());
                 track_taskbar(app.handle().clone());
+                keep_above_taskbar(app.handle().clone());
                 track_foreground(app.handle().clone());
                 track_fullscreen(app.handle().clone());
             }
