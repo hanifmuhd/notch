@@ -3,6 +3,7 @@
 mod alerts;
 mod app_state;
 mod fullscreen;
+mod monitors;
 mod pace;
 mod placement;
 mod settings;
@@ -140,17 +141,13 @@ fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
     let mut monitors = app.available_monitors().unwrap_or_default();
     monitors.sort_by_key(|m| m.position().x);
     let primary = app.primary_monitor().ok().flatten().map(|m| *m.position());
-    monitors
-        .iter()
-        .enumerate()
-        .map(|(i, m)| {
-            let is_primary = primary == Some(*m.position());
-            ScreenInfo {
-                id: monitor_id(m),
-                label: format!("Screen {}{}", i + 1, if is_primary { " (main)" } else { "" }),
-                primary: is_primary,
-            }
-        })
+    let friendly = monitors::friendly_names();
+    let names: Vec<_> = monitors.iter().map(|m| m.name().and_then(|n| friendly.get(n)).cloned()).collect();
+    let mains: Vec<_> = monitors.iter().map(|m| primary == Some(*m.position())).collect();
+    monitors::labels(&names, &mains)
+        .into_iter()
+        .zip(monitors.iter().zip(mains))
+        .map(|(label, (m, primary))| ScreenInfo { id: monitor_id(m), label, primary })
         .collect()
 }
 
