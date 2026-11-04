@@ -128,6 +128,11 @@ impl AppState {
         Ok((source_changed, s.run_alerts()))
     }
 
+    /// Where the hooks drop event files: `events` beside settings.json.
+    pub fn events_dir(&self) -> PathBuf {
+        self.lock().settings_path.with_file_name("events")
+    }
+
     pub fn prev_foreground(&self) -> isize {
         self.lock().prev_foreground
     }

@@ -3,6 +3,7 @@
 mod alerts;
 mod app_state;
 mod fullscreen;
+mod hooks;
 mod monitors;
 mod pace;
 mod placement;
@@ -126,14 +127,52 @@ fn get_settings(state: State<AppState>) -> Settings {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> Result<ViewModel, String> {
+    let old_source = state.snapshot().1;
     let (source_changed, events) = state.save_settings(settings).map_err(|e| e.to_string())?;
     replace(&app);
     let vm = emit(&app, announce(&events));
     on_alert(&app, events);
     if source_changed {
+        move_hooks(app.clone(), old_source);
         refresh_now(app);
     }
     Ok(vm)
+}
+
+/// Best effort, off the main thread: WSL calls take seconds.
+fn move_hooks(app: AppHandle, old_source: Option<source::Source>) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let (s, _) = state.snapshot();
+        // Auto is undetected right after a change, so look for the new install here.
+        let new = source::detect_with(&SystemRunner, &s.source, s.start_wsl);
+        let moved = hooks::move_hooks(old_source.as_ref(), new.as_ref(), s.start_wsl, &state.events_dir(), &SystemRunner);
+        if let Err(e) = moved {
+            eprintln!("hooks: move after source change failed: {}", e.message());
+        }
+    });
+}
+
+/// The Task alerts switch, read from Claude's settings.json (seconds over WSL, so off the main thread).
+#[tauri::command]
+async fn get_task_alerts(app: AppHandle) -> Result<hooks::TaskAlerts, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (s, source) = app.state::<AppState>().snapshot();
+        hooks::status(source.as_ref(), s.start_wsl, &SystemRunner)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_task_alerts(app: AppHandle, on: bool) -> Result<hooks::TaskAlerts, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let (s, source) = state.snapshot();
+        hooks::set(source.as_ref(), s.start_wsl, on, &state.events_dir(), &SystemRunner)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -338,11 +377,17 @@ fn main() {
             set_panel_open,
             focus_previous,
             list_distros,
-            open_install_page
+            open_install_page,
+            get_task_alerts,
+            set_task_alerts
         ])
         .setup(|app| {
             let path = app.path().app_config_dir()?.join("settings.json");
             app.manage(AppState::new(settings::load(&path), path));
+            // The hooks only write into an existing folder, so it must exist before they fire.
+            if let Err(e) = std::fs::create_dir_all(app.state::<AppState>().events_dir()) {
+                eprintln!("hooks: events folder: {e}");
+            }
             tray::build(app.handle())?;
             apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
             #[cfg(debug_assertions)]

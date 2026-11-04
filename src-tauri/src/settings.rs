@@ -28,6 +28,8 @@ pub struct Settings {
     pub source: SourcePref,
     pub start_wsl: bool,
     pub show_notch: bool,
+    /// Task alerts also show finished tasks (the Stop hook stays installed either way).
+    pub task_finished: bool,
 }
 
 impl Default for Settings {
@@ -40,6 +42,7 @@ impl Default for Settings {
             source: SourcePref::Auto,
             start_wsl: true,
             show_notch: true,
+            task_finished: true,
         }
     }
 }
@@ -121,6 +124,7 @@ mod tests {
             },
             start_wsl: false,
             show_notch: false,
+            task_finished: false,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -164,6 +168,7 @@ mod tests {
         );
         assert!(!s.start_wsl);
         assert!(s.show_notch);
+        assert!(s.task_finished);
         let _ = fs::remove_dir_all(&dir);
     }
 
