@@ -89,16 +89,15 @@ fn parse_date(s: &str) -> Option<NaiveDate> {
     NaiveDate::from_ymd_opt(year, m as u32 + 1, day)
 }
 
-/// This month and next month (Malaysia time), whichever has no days cached. Next month is
-/// fetched ahead so tomorrow's Subuh is known on the last evening of a month.
+/// Today's and tomorrow's months (Malaysia time) with no days cached. So next month is fetched
+/// from midnight on the last day, and tomorrow's Subuh is known well before Maghrib.
 pub fn missing_months(days: &[Day], now: DateTime<Utc>) -> Vec<(i32, u32)> {
     let today = now.with_timezone(&Kuala_Lumpur).date_naive();
-    let next = today.checked_add_months(chrono::Months::new(1)).unwrap_or(today);
-    [today, next]
-        .iter()
-        .map(|d| (d.year(), d.month()))
-        .filter(|&(y, m)| !days.iter().any(|d| d.date.year() == y && d.date.month() == m))
-        .collect()
+    let tomorrow = today.succ_opt().unwrap_or(today);
+    let mut months: Vec<_> = [today, tomorrow].iter().map(|d| (d.year(), d.month())).collect();
+    months.dedup();
+    months.retain(|&(y, m)| !days.iter().any(|d| d.date.year() == y && d.date.month() == m));
+    months
 }
 
 /// Where a zone's month is kept: `prayer-<ZONE>-<YYYY-MM>.json` in the app's folder.
@@ -107,7 +106,7 @@ pub fn cache_path(dir: &Path, zone: &str, month: (i32, u32)) -> PathBuf {
 }
 
 /// Downloads one month with Windows' curl; the body only when it parses (prayer spec 5.1).
-/// `period=duration` takes any month, so next month can be fetched before it starts.
+/// `period=duration` takes any month, so next month can be fetched on the last day of this one.
 pub fn fetch_month(runner: &dyn Runner, zone: &str, (year, month): (i32, u32)) -> Option<String> {
     let first = NaiveDate::from_ymd_opt(year, month, 1)?;
     let last = first.checked_add_months(chrono::Months::new(1))?.pred_opt()?;
@@ -267,10 +266,13 @@ mod tests {
     }
 
     #[test]
-    fn missing_months_are_this_and_next() {
+    fn missing_months_are_this_and_next_on_the_last_day() {
         let d = days();
-        assert_eq!(missing_months(&[], my(4, 12, 0)), vec![(2026, 11), (2026, 12)]);
-        assert_eq!(missing_months(&d, my(4, 12, 0)), vec![(2026, 12)]);
+        assert_eq!(missing_months(&[], my(4, 12, 0)), vec![(2026, 11)]);
+        assert!(missing_months(&d, my(4, 12, 0)).is_empty());
+        assert!(missing_months(&d, my(29, 23, 59)).is_empty());
+        // From midnight on the last day, so next month is in long before Maghrib.
+        assert_eq!(missing_months(&d, my(30, 0, 0)), vec![(2026, 12)]);
         let mut both = d.clone();
         both.extend(parse_month(r#"{"status":"OK!","prayerTime":[{"date":"01-Dis-2026","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}]}"#).unwrap());
         assert!(missing_months(&both, my(30, 21, 0)).is_empty());
