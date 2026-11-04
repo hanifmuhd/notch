@@ -30,6 +30,10 @@ struct Inner {
     prev_foreground: isize,
     /// Claude Code sessions that need you or finished (spec 5.2), from the hook events.
     sessions: Sessions,
+    /// Cached JAKIM days for the chosen zone, and which prayer alerts already fired (saved).
+    prayer_days: Vec<crate::prayer::Day>,
+    prayer_fired: crate::prayer::Fired,
+    prayer_fired_path: PathBuf,
 }
 
 pub struct AppState(Mutex<Inner>);
@@ -38,6 +42,11 @@ impl AppState {
     pub fn new(settings: Settings, settings_path: PathBuf) -> Self {
         let source = source_for(&settings.source);
         let alerts_path = settings_path.with_file_name("alerts.json");
+        let prayer_fired_path = settings_path.with_file_name("prayer-fired.json");
+        let prayer_fired = std::fs::read_to_string(&prayer_fired_path)
+            .ok()
+            .and_then(|t| serde_json::from_str(&t).ok())
+            .unwrap_or_default();
         AppState(Mutex::new(Inner {
             reading: None,
             last_ok: true,
@@ -52,6 +61,9 @@ impl AppState {
             refresh_again: false,
             prev_foreground: 0,
             sessions: Sessions::default(),
+            prayer_days: Vec::new(),
+            prayer_fired,
+            prayer_fired_path,
         }))
     }
 
@@ -90,6 +102,13 @@ impl AppState {
         vm.sessions = s.sessions.rows();
         vm.attention = s.sessions.attention();
         vm.pod = s.sessions.pod();
+        if s.settings.prayer_on {
+            let place = crate::prayer_zones::ZONES
+                .iter()
+                .find(|(c, _)| *c == s.settings.prayer_zone)
+                .map_or(s.settings.prayer_zone.as_str(), |(_, p)| *p);
+            vm.prayer = Some(view::prayer_view(&s.prayer_days, now, place));
+        }
         vm
     }
 
@@ -136,6 +155,40 @@ impl AppState {
     }
 
     /// Where the hooks drop event files: `events` beside settings.json.
+    /// The folder the prayer months are cached in (beside settings.json).
+    pub fn data_dir(&self) -> PathBuf {
+        self.lock().settings_path.parent().map(PathBuf::from).unwrap_or_default()
+    }
+
+    pub fn set_prayer_days(&self, days: Vec<crate::prayer::Day>) {
+        self.lock().prayer_days = days;
+    }
+
+    /// Prayer alerts due now (once each, saved so a restart does not repeat them).
+    pub fn prayer_due(&self, now: DateTime<Utc>) -> Vec<crate::prayer::Alert> {
+        let mut s = self.lock();
+        if !s.settings.prayer_on {
+            return Vec::new();
+        }
+        let remind = s.settings.prayer_remind;
+        let Inner { prayer_days, prayer_fired, prayer_fired_path, .. } = &mut *s;
+        let alerts = crate::prayer::due(prayer_days, now, remind, prayer_fired);
+        if !alerts.is_empty() {
+            if let Ok(json) = serde_json::to_string(prayer_fired) {
+                if let Err(e) = settings::write_atomic(prayer_fired_path, &json) {
+                    eprintln!("prayer: could not save fired alerts: {e}");
+                }
+            }
+        }
+        alerts
+    }
+
+    /// When the prayer thread should wake next (None: nothing scheduled in the cached days).
+    pub fn prayer_wake(&self, now: DateTime<Utc>) -> Option<DateTime<Utc>> {
+        let s = self.lock();
+        crate::prayer::next_wake(&s.prayer_days, now, s.settings.prayer_remind)
+    }
+
     pub fn events_dir(&self) -> PathBuf {
         self.lock().settings_path.with_file_name("events")
     }
@@ -529,5 +582,36 @@ mod tests {
         assert_eq!(vm.sessions[1].status, "needs_you");
         assert_eq!(vm.flash, None);
         assert_eq!(vm.pod.map(|p| p.status), Some("needs_you"));
+    }
+
+    #[test]
+    fn prayer_alert_fires_once_across_restart() {
+        use chrono::TimeZone;
+        use chrono_tz::Asia::Kuala_Lumpur;
+        let dir = scratch_dir("prayer-restart");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("settings.json");
+        let on = Settings { prayer_on: true, prayer_remind: 0, ..Settings::default() };
+        let days = crate::prayer::parse_month(include_str!("../tests/fixtures/jakim-WLY01.json")).unwrap();
+        let maghrib = Kuala_Lumpur.with_ymd_and_hms(2026, 11, 4, 18, 58, 0).unwrap().with_timezone(&Utc);
+        let first = AppState::new(on.clone(), path.clone());
+        first.set_prayer_days(days.clone());
+        assert_eq!(first.prayer_due(maghrib).len(), 1);
+        let second = AppState::new(on, path);
+        second.set_prayer_days(days);
+        assert!(second.prayer_due(maghrib + chrono::Duration::seconds(30)).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prayer_section_only_when_on() {
+        let s = state();
+        assert!(s.view(Local::now(), None).prayer.is_none());
+        let mut on = s.settings();
+        on.prayer_on = true;
+        s.save_settings(on).unwrap();
+        let p = s.view(Local::now(), None).prayer.unwrap();
+        assert!(p.unavailable); // no days loaded yet
+        assert!(p.place.contains("Kuala Lumpur"));
     }
 }

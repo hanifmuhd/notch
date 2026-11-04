@@ -3,6 +3,7 @@
 
 use crate::alerts::{level, AlertEvent, Level, LimitKind};
 use crate::events::{Pod, SessionRow};
+use crate::prayer::{self, Day};
 use crate::pace::{elapsed_pct, runs_out_at, SESSION_WINDOW, WEEK_WINDOW};
 use crate::settings::Settings;
 use crate::source::Source;
@@ -55,6 +56,10 @@ pub struct ViewModel {
     pub pod: Option<Pod>,
     /// "top", "taskbar" or "taskbar_mini"; set by main.rs from the taskbar measurement.
     pub mode: &'static str,
+    /// The Prayer section, when prayer times are on.
+    pub prayer: Option<PrayerView>,
+    /// A prayer banner to show now (only on the emit that carries it).
+    pub banner: Option<Banner>,
 }
 
 /// A reading older than this counts as stale even if the last refresh worked (e.g. after sleep).
@@ -120,6 +125,68 @@ pub fn countdown_text(now: DateTime<Local>, resets_at: Option<DateTime<Utc>>) ->
         m if m <= 0 => "now".into(),
         m if m < 60 => format!("{m}m"),
         m => format!("{}:{:02}", m / 60, m % 60),
+    }
+}
+
+/// The Prayer section of the panel (prayer spec 5.2).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PrayerView {
+    pub place: String,
+    pub unavailable: bool,
+    pub next_name: String,
+    pub next_time: String,
+    pub next_in: String,
+    /// How far from the previous prayer to the next one, 0-100.
+    pub progress_pct: f64,
+    /// Today's five prayers: (name, "HH:MM" Malaysia time, "past" | "next" | "later").
+    pub times: Vec<(String, String, &'static str)>,
+}
+
+/// A banner the notch shows for a while (prayer time or reminder).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Banner {
+    pub text: String,
+    /// Shorter text for the taskbar capsule.
+    pub short: String,
+    pub seconds: u32,
+}
+
+pub fn prayer_view(days: &[Day], now: DateTime<Local>, place: &str) -> PrayerView {
+    use chrono_tz::Asia::Kuala_Lumpur;
+    let now_utc = now.with_timezone(&Utc);
+    let hm = |t: DateTime<Utc>| t.with_timezone(&Kuala_Lumpur).format("%H:%M").to_string();
+    let empty = PrayerView {
+        place: place.into(),
+        unavailable: true,
+        next_name: String::new(),
+        next_time: String::new(),
+        next_in: String::new(),
+        progress_pct: 0.0,
+        times: Vec::new(),
+    };
+    let (Some(day), Some((next_p, next_t))) = (prayer::today(days, now_utc), prayer::next(days, now_utc)) else {
+        return empty;
+    };
+    let progress_pct = prayer::previous(days, now_utc).map_or(0.0, |prev| {
+        let span = (next_t - prev).num_seconds().max(1) as f64;
+        ((now_utc - prev).num_seconds() as f64 / span * 100.0).clamp(0.0, 100.0)
+    });
+    let times = prayer::PRAYERS
+        .iter()
+        .zip(day.times)
+        .map(|(p, t)| {
+            let state = if t == next_t { "next" } else if t <= now_utc { "past" } else { "later" };
+            (p.name().to_string(), hm(t), state)
+        })
+        .collect();
+    PrayerView {
+        place: place.into(),
+        unavailable: false,
+        next_name: next_p.name().into(),
+        next_time: hm(next_t),
+        next_in: span_text(now, next_t),
+        progress_pct,
+        times,
     }
 }
 
@@ -234,7 +301,7 @@ pub fn build(
             }
         }
     };
-    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0, pod: None, mode: "top" }
+    ViewModel { pill, pill_text, session, week, updated_text, announce: None, refreshing: false, flash: None, sessions: Vec::new(), attention: 0, pod: None, mode: "top", prayer: None, banner: None }
 }
 
 #[cfg(test)]
@@ -532,5 +599,34 @@ mod tests {
         let idle = limit_view(&Limit { used_pct: 0.0, resets_at: None }, 90, SESSION_WINDOW, now);
         assert_eq!(idle.countdown_text, "ready");
         assert_eq!(idle.span_text, "");
+    }
+
+    fn prayer_days() -> Vec<Day> {
+        prayer::parse_month(include_str!("../tests/fixtures/jakim-WLY01.json")).unwrap()
+    }
+
+    /// Malaysia wall time on a November 2026 day, as the PC's local time.
+    fn my_local(day: u32, h: u32, m: u32) -> DateTime<Local> {
+        use chrono_tz::Asia::Kuala_Lumpur;
+        Kuala_Lumpur.with_ymd_and_hms(2026, 11, day, h, m, 0).unwrap().with_timezone(&Local)
+    }
+
+    #[test]
+    fn prayer_view_next_and_progress() {
+        let v = prayer_view(&prayer_days(), my_local(4, 18, 0), "Kuala Lumpur, Putrajaya");
+        assert!(!v.unavailable);
+        assert_eq!((v.next_name.as_str(), v.next_time.as_str(), v.next_in.as_str()), ("Maghrib", "18:58", "in 58m"));
+        // 16:20 -> 18:58 is 158 min; at 18:00, 100 min have passed.
+        assert!((v.progress_pct - 100.0 / 158.0 * 100.0).abs() < 0.01);
+        let states: Vec<_> = v.times.iter().map(|t| (t.0.as_str(), t.1.as_str(), t.2)).collect();
+        assert_eq!(states, [("Subuh", "05:48", "past"), ("Zohor", "13:00", "past"), ("Asar", "16:20", "past"), ("Maghrib", "18:58", "next"), ("Isyak", "20:09", "later")]);
+    }
+
+    #[test]
+    fn prayer_view_unavailable() {
+        let v = prayer_view(&[], my_local(4, 18, 0), "Kuala Lumpur, Putrajaya");
+        assert!(v.unavailable);
+        assert!(v.times.is_empty());
+        assert_eq!(v.place, "Kuala Lumpur, Putrajaya");
     }
 }

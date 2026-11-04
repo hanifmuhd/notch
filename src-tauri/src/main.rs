@@ -20,7 +20,7 @@ mod view;
 
 use alerts::AlertEvent;
 use app_state::AppState;
-use chrono::{DateTime, Local, Utc};
+use chrono::{DateTime, Datelike, Local, Utc};
 use serde::Serialize;
 use settings::Settings;
 use source::SystemRunner;
@@ -117,8 +117,15 @@ fn emit(app: &AppHandle, announce: Option<String>) -> ViewModel {
 
 /// `flash` is set only on the emit that carries a new session notice (spec 5.3).
 fn emit_flash(app: &AppHandle, announce: Option<String>, flash: Option<String>) -> ViewModel {
+    emit_with(app, announce, flash, None)
+}
+
+/// The one place a view goes out: `flash` (session notice) and `banner` (prayer) are set only on
+/// the emit that carries them.
+fn emit_with(app: &AppHandle, announce: Option<String>, flash: Option<String>, banner: Option<view::Banner>) -> ViewModel {
     let mut vm = app.state::<AppState>().view(Local::now(), announce);
     vm.flash = flash;
+    vm.banner = banner;
     vm.mode = mode().0.name();
     #[cfg(debug_assertions)]
     eprintln!("usage-updated {}", serde_json::to_string(&vm).unwrap_or_default());
@@ -221,6 +228,9 @@ fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> 
     replace(&app);
     let handle = app.clone();
     std::thread::spawn(move || update_mode(&handle)); // Show in may have changed
+    if let Some(kick) = PRAYER_KICK.get() {
+        let _ = kick.send(()); // prayer on/off, zone or reminder may have changed
+    }
     let vm = emit(&app, announce(&events));
     on_alert(&app, events);
     if source_changed {
@@ -416,6 +426,91 @@ fn replace(app: &AppHandle) {
 }
 
 /// The webview reports where the visible shape is; only there does the window take the mouse.
+/// JAKIM zones for the settings dropdown, as (code, places).
+#[tauri::command]
+fn get_zones() -> Vec<(&'static str, &'static str)> {
+    prayer_zones::ZONES.to_vec()
+}
+
+/// Wakes the prayer thread now (prayer times turned on, zone or reminder changed).
+static PRAYER_KICK: std::sync::OnceLock<std::sync::mpsc::Sender<()>> = std::sync::OnceLock::new();
+
+/// "Now" for prayer timing. Debug builds can shift it with NOTCH_PRAYER_TEST_OFFSET_MIN to see an
+/// alert without waiting for a real prayer time.
+fn prayer_now() -> DateTime<Utc> {
+    #[cfg(debug_assertions)]
+    if let Some(min) = std::env::var("NOTCH_PRAYER_TEST_OFFSET_MIN").ok().and_then(|v| v.parse::<i64>().ok()) {
+        return Utc::now() + chrono::Duration::minutes(min);
+    }
+    Utc::now()
+}
+
+/// Prayer times (prayer spec 5.1-5.3): keeps this and next month cached for the chosen zone
+/// (download on a miss, at most once an hour), fires due alerts as a banner plus a notification,
+/// and sleeps until the next prayer or reminder moment, at most 60 s at a time so sleep and clock
+/// changes are noticed. Does nothing while prayer times are off.
+fn track_prayer(app: AppHandle) {
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let _ = PRAYER_KICK.set(tx);
+    std::thread::spawn(move || {
+        let mut tried: Option<(String, DateTime<Utc>)> = None; // zone, last download attempt
+        loop {
+            let state = app.state::<AppState>();
+            let s = state.settings();
+            let mut wait = Duration::from_secs(60);
+            if s.prayer_on {
+                let now = prayer_now();
+                let dir = state.data_dir();
+                let mut days = prayer::load_days(&dir, &s.prayer_zone, now);
+                let have_today = prayer::today(&days, now).is_some();
+                let retry_due = tried.as_ref().is_none_or(|(z, at)| *z != s.prayer_zone || now - *at >= chrono::Duration::hours(1));
+                if !have_today && retry_due {
+                    tried = Some((s.prayer_zone.clone(), now));
+                    if let Some(body) = prayer::fetch_month(&SystemRunner, &s.prayer_zone) {
+                        let month = prayer::parse_month(&body).and_then(|d| d.first().map(|x| (x.date.year(), x.date.month())));
+                        if let Some(m) = month {
+                            let _ = settings::write_atomic(&prayer::cache_path(&dir, &s.prayer_zone, m), &body);
+                        }
+                        days = prayer::load_days(&dir, &s.prayer_zone, now);
+                    }
+                }
+                state.set_prayer_days(days);
+                let place = prayer_zones::ZONES.iter().find(|(c, _)| *c == s.prayer_zone).map_or("", |(_, p)| *p).to_string();
+                let alerts = state.prayer_due(now);
+                if alerts.is_empty() {
+                    emit(&app, None); // keeps "in 58m" and the progress bar current
+                }
+                for a in alerts {
+                    let (title, banner) = prayer_texts(&a);
+                    toast(&app, title, format!("{} · {place}", banner.short.rsplit(" · ").next().unwrap_or("")));
+                    emit_with(&app, Some(banner.text.clone()), None, Some(banner));
+                }
+                if let Some(next) = state.prayer_wake(now) {
+                    let ms = (next - now).num_milliseconds().clamp(200, 60_000) as u64;
+                    wait = Duration::from_millis(ms);
+                }
+            }
+            let _ = rx.recv_timeout(wait);
+        }
+    });
+}
+
+/// Notification title and notch banner for one prayer alert (exact copy: plan Global Constraints).
+fn prayer_texts(a: &prayer::Alert) -> (String, view::Banner) {
+    use chrono_tz::Asia::Kuala_Lumpur;
+    let hm = |t: DateTime<Utc>| t.with_timezone(&Kuala_Lumpur).format("%H:%M").to_string();
+    match a {
+        prayer::Alert::Time(p, t) => (
+            format!("{} — It's time to pray", p.name()),
+            view::Banner { text: format!("{} · It's time to pray · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 60 },
+        ),
+        prayer::Alert::Remind(p, t, m) => (
+            format!("{} in {m} min", p.name()),
+            view::Banner { text: format!("{} in {m} min · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 20 },
+        ),
+    }
+}
+
 #[tauri::command]
 fn set_hit_rects(rects: Vec<hit::HitRect>) {
     *HIT_RECTS.lock().unwrap_or_else(|e| e.into_inner()) = rects;
@@ -634,6 +729,7 @@ fn main() {
             save_settings,
             list_screens,
             set_hit_rects,
+            get_zones,
             focus_previous,
             list_distros,
             open_install_page,
@@ -688,6 +784,7 @@ fn main() {
                 }
                 track_pointer(app.handle().clone());
                 track_taskbar(app.handle().clone());
+                track_prayer(app.handle().clone());
                 keep_above_taskbar(app.handle().clone());
                 track_foreground(app.handle().clone());
                 track_fullscreen(app.handle().clone());
@@ -700,7 +797,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::due;
+    use super::{due, prayer, prayer_texts};
     use chrono::{Duration, Utc};
 
     #[test]
@@ -711,5 +808,17 @@ mod tests {
         assert!(due(t + Duration::hours(8), t)); // woke from sleep
         assert!(due(t - Duration::hours(1), t)); // clock moved back
         assert!(due(t, chrono::DateTime::<Utc>::MIN_UTC)); // never refreshed
+    }
+
+    #[test]
+    fn prayer_alert_copy() {
+        use chrono::TimeZone;
+        let t = chrono_tz::Asia::Kuala_Lumpur.with_ymd_and_hms(2026, 11, 4, 18, 58, 0).unwrap().with_timezone(&Utc);
+        let (title, b) = prayer_texts(&prayer::Alert::Time(prayer::Prayer::Maghrib, t));
+        assert_eq!(title, "Maghrib — It's time to pray");
+        assert_eq!((b.text.as_str(), b.short.as_str(), b.seconds), ("Maghrib · It's time to pray · 18:58", "Maghrib · 18:58", 60));
+        let (title, b) = prayer_texts(&prayer::Alert::Remind(prayer::Prayer::Maghrib, t, 10));
+        assert_eq!(title, "Maghrib in 10 min");
+        assert_eq!((b.text.as_str(), b.seconds), ("Maghrib in 10 min · 18:58", 20));
     }
 }

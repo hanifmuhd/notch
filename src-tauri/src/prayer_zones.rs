@@ -1,6 +1,5 @@
 //! JAKIM prayer zones (code, places), from e-solat.gov.my (spike S2, docs/spikes/jakim-zones.md).
 
-#[allow(dead_code)] // read by the settings zone list (Task 5)
 pub const ZONES: &[(&str, &str)] = &[
     ("JHR01", "Pulau Aur dan Pulau Pemanggil"),
     ("JHR02", "Johor Bahru, Kota Tinggi, Mersing, Kulai"),
