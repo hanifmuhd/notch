@@ -7,6 +7,7 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 pub const MARKER: &str = "claude-notch";
 pub const EVENTS: [&str; 5] = ["Notification", "PermissionRequest", "Stop", "UserPromptSubmit", "SessionEnd"];
@@ -205,6 +206,9 @@ pub fn events_dir_in_shell(target: &Target, win_dir: &Path, runner: &dyn Runner)
 /// invalid JSON is left alone. The file as it was before the first edit is kept once in
 /// `settings.json.notch-backup`.
 pub fn apply_at(path: &Path, on: bool, shell_dir: &str) -> Result<(), HookError> {
+    // Switch flips and a source-change move run on separate threads and share one `.tmp`.
+    static EDIT: Mutex<()> = Mutex::new(());
+    let _edit = EDIT.lock().unwrap_or_else(|e| e.into_inner());
     let io_err = |e: io::Error| HookError::Io(format!("Couldn't update Claude's settings.json: {e}"));
     let old = match std::fs::read_to_string(path) {
         Ok(text) => Some(text),
@@ -453,6 +457,31 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), on);
         apply_at(&path, false, "").unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), start);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parallel_switch_flips_never_break_the_file() {
+        let dir = scratch("parallel");
+        let path = dir.join("settings.json");
+        std::fs::write(&path, REALISTIC).unwrap();
+        let threads: Vec<_> = (0..8)
+            .map(|t| {
+                let path = path.clone();
+                std::thread::spawn(move || (0..15).map(|i| apply_at(&path, (t + i) % 2 == 0, "/e")).collect::<Vec<_>>())
+            })
+            .collect();
+        for t in threads {
+            for r in t.join().unwrap() {
+                assert_eq!(r, Ok(()));
+            }
+        }
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(serde_json::from_str::<Value>(&text).is_ok());
+        apply_at(&path, false, "").unwrap();
+        assert_eq!(parse(&std::fs::read_to_string(&path).unwrap()), parse(REALISTIC));
+        apply_at(&path, true, "/e").unwrap();
+        assert!(is_installed(&std::fs::read_to_string(&path).unwrap()));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
