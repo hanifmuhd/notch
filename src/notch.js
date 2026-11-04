@@ -188,7 +188,7 @@ function renderPrayer(vm) {
   $('#prayer-bar').style.width = p.progress_pct + '%';
   $('#prayer-times').replaceChildren(...p.times.map(([name, time, state]) => {
     const li = el('li', 'is-' + state, name);
-    li.append(el('b', null, time));
+    li.append(' ', el('b', null, time)); // the space keeps "Subuh 05:48" two words for screen readers
     if (state === 'next') li.setAttribute('aria-current', 'time');
     return li;
   }));

@@ -154,7 +154,6 @@ impl AppState {
         Ok((source_changed, s.run_alerts()))
     }
 
-    /// Where the hooks drop event files: `events` beside settings.json.
     /// The folder the prayer months are cached in (beside settings.json).
     pub fn data_dir(&self) -> PathBuf {
         self.lock().settings_path.parent().map(PathBuf::from).unwrap_or_default()
@@ -189,6 +188,7 @@ impl AppState {
         crate::prayer::next_wake(&s.prayer_days, now, s.settings.prayer_remind)
     }
 
+    /// Where the hooks drop event files: `events` beside settings.json.
     pub fn events_dir(&self) -> PathBuf {
         self.lock().settings_path.with_file_name("events")
     }

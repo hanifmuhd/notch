@@ -21,6 +21,7 @@
   --surface: var(--black);
   --ink: var(--cream);
   --ink-muted: #f3f1eebf;
+  --ink-faint: #f3f1ee80; /* past prayers; 4.8:1 on black */
   --session: var(--cream);
   --week: var(--blue);
   --alert: var(--amber);
@@ -158,7 +159,7 @@ button { font: inherit; color: inherit; }
 .prayer__times { display: grid; grid-template-columns: repeat(5, 1fr); margin: 0; padding: 0; list-style: none; text-align: center; }
 .prayer__times li { display: flex; flex-direction: column; font-size: 11px; color: var(--ink-muted); }
 .prayer__times b { font-size: 12.5px; font-weight: 700; color: var(--ink); }
-.prayer__times .is-past, .prayer__times .is-past b { color: #f3f1ee80; }
+.prayer__times .is-past, .prayer__times .is-past b { color: var(--ink-faint); }
 .prayer__times .is-next, .prayer__times .is-next b { color: var(--week); }
 
 /* sessions */
