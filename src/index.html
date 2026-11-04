@@ -53,10 +53,17 @@
         <span class="settings__title">Settings</span>
       </div>
       <div class="setting setting__row">
+        <span id="s-show-in-label">Show in</span>
+        <span class="segmented" role="radiogroup" aria-labelledby="s-show-in-label">
+          <label><input type="radio" name="show_in" value="top"><span>Top of screen</span></label>
+          <label><input type="radio" name="show_in" value="taskbar"><span>Taskbar</span></label>
+        </span>
+      </div>
+      <div class="setting setting__row" data-top-only>
         <label for="s-screen">Show on</label>
         <select class="select" id="s-screen"></select>
       </div>
-      <div class="setting setting__row">
+      <div class="setting setting__row" data-top-only>
         <span id="s-position-label">Position</span>
         <span class="segmented" role="radiogroup" aria-labelledby="s-position-label">
           <label><input type="radio" name="position" value="left"><span>Left</span></label>
@@ -64,6 +71,7 @@
           <label><input type="radio" name="position" value="right"><span>Right</span></label>
         </span>
       </div>
+      <label class="setting check" data-top-only><input type="checkbox" id="s-stay-behind"><span>Stay behind windows</span></label>
       <div class="setting setting__row">
         <label for="s-source">Get usage from</label>
         <select class="select" id="s-source"></select>

@@ -357,6 +357,9 @@ function renderSettings(screens) {
   fillSelect(sourceSel, [['auto', 'Auto'], ['windows', 'Windows'], ...names.map((d) => ['wsl:' + d, 'WSL: ' + d])], sourceValue(settings.source));
   for (const r of document.querySelectorAll('input[name="position"]')) r.checked = r.value === settings.position;
   notch.dataset.align = settings.position; // the window sits at that edge; the shape follows
+  for (const r of document.querySelectorAll('input[name="show_in"]')) r.checked = r.value === settings.show_in;
+  for (const row of document.querySelectorAll('[data-top-only]')) row.hidden = settings.show_in === 'taskbar';
+  $('#s-stay-behind').checked = settings.stay_behind;
   reportHits();
   $('#s-start-wsl').checked = settings.start_wsl;
   $('#s-start-wsl-row').hidden = settings.source.kind !== 'wsl';
@@ -390,6 +393,10 @@ sourceSel.addEventListener('change', () => {
 });
 $('#s-start-wsl').addEventListener('change', (e) => save({ start_wsl: e.target.checked }));
 $('#s-task-finished').addEventListener('change', (e) => save({ task_finished: e.target.checked }));
+$('#s-stay-behind').addEventListener('change', (e) => save({ stay_behind: e.target.checked }));
+for (const r of document.querySelectorAll('input[name="show_in"]')) {
+  r.addEventListener('change', () => save({ show_in: r.value }));
+}
 
 // ---------- task alerts switch (reads Claude's settings.json, may take seconds on WSL) ----------
 

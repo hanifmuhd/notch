@@ -321,6 +321,7 @@ fn place_window(app: &AppHandle) -> Result<(), String> {
     // Hit-testing is relative to the webview, which can sit inside an invisible window frame.
     let inner = win.inner_position().map(|p| (p.x, p.y)).unwrap_or((x, y));
     *WINDOW_RECT.lock().unwrap_or_else(|e| e.into_inner()) = Some((Rect { x: inner.0, y: inner.1, w: pw, h: ph }, scale));
+    apply_z_order(app);
     Ok(())
 }
 
@@ -403,8 +404,40 @@ fn track_foreground(app: AppHandle) {
         let fg = unsafe { GetForegroundWindow() }.0 as isize;
         if fg != 0 && fg != notch.0 as isize {
             app.state::<AppState>().set_prev_foreground(fg);
+            // Stay behind windows: once another window is in front, sink the notch again.
+            if stays_behind(&app) {
+                sink(notch);
+            }
         }
     });
+}
+
+/// "Stay behind windows" is on and applies (Top mode only; the taskbar is always on top).
+fn stays_behind(app: &AppHandle) -> bool {
+    app.try_state::<AppState>().is_some_and(|s| {
+        let s = s.settings();
+        s.stay_behind && s.show_in == settings::ShowIn::Top
+    })
+}
+
+/// Puts the notch at the bottom of the window stack without activating or moving it.
+#[cfg(windows)]
+fn sink(hwnd: windows::Win32::Foundation::HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_BOTTOM, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+    let _ = unsafe { SetWindowPos(hwnd, Some(HWND_BOTTOM), 0, 0, 0, 0, SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE) };
+}
+
+/// Always on top, or at the bottom when "Stay behind windows" applies (spec 5.6).
+fn apply_z_order(app: &AppHandle) {
+    let Some(win) = app.get_webview_window("notch") else { return };
+    let behind = stays_behind(app);
+    let _ = win.set_always_on_top(!behind);
+    #[cfg(windows)]
+    if behind {
+        if let Ok(h) = win.hwnd() {
+            sink(h);
+        }
+    }
 }
 
 /// Shows or hides the notch to match `show_notch` and the full-screen state, only on a change.

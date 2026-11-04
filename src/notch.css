@@ -218,7 +218,7 @@ button { font: inherit; color: inherit; }
 .segmented input:checked + span { color: var(--black); background: var(--cream); font-weight: 700; }
 .segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
 .check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 12.5px; cursor: pointer; }
-.check[hidden] { display: none; }
+.check[hidden], .setting[hidden] { display: none; }
 .check input { width: 16px; height: 16px; margin: 0; accent-color: var(--week); cursor: pointer; }
 .check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .range { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 30px; margin: 0; background: transparent; cursor: pointer; }

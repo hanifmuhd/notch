@@ -10,6 +10,15 @@ pub enum Position {
     Right,
 }
 
+/// Where the notch lives (redesign spec 5.5).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ShowIn {
+    #[default]
+    Top,
+    Taskbar,
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum SourcePref {
@@ -30,6 +39,9 @@ pub struct Settings {
     pub show_notch: bool,
     /// Task alerts also show finished tasks (the Stop hook stays installed either way).
     pub task_finished: bool,
+    pub show_in: ShowIn,
+    /// Keep the notch below other windows so a maximised window covers it (spec 5.6).
+    pub stay_behind: bool,
 }
 
 impl Default for Settings {
@@ -43,6 +55,8 @@ impl Default for Settings {
             start_wsl: true,
             show_notch: true,
             task_finished: true,
+            show_in: ShowIn::Top,
+            stay_behind: false,
         }
     }
 }
@@ -125,6 +139,8 @@ mod tests {
             start_wsl: false,
             show_notch: false,
             task_finished: false,
+            show_in: ShowIn::Taskbar,
+            stay_behind: true,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -188,6 +204,30 @@ mod tests {
         let path = dir.join("settings.json");
         fs::write(&path, r#"{"session_threshold":10}"#).unwrap();
         assert_eq!(load(&path).session_threshold, 50);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_settings_file_gets_new_defaults() {
+        let dir = test_dir("old_file");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"session_threshold":80,"week_threshold":90,"position":"right","screen":null,"source":{"kind":"auto"},"start_wsl":true,"show_notch":true,"task_finished":true}"#).unwrap();
+        let s = load(&path);
+        assert_eq!(s.session_threshold, 80);
+        assert_eq!(s.show_in, ShowIn::Top);
+        assert!(!s.stay_behind);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn settings_round_trip_new_fields() {
+        let dir = test_dir("new_fields");
+        let path = dir.join("settings.json");
+        let s = Settings { show_in: ShowIn::Taskbar, stay_behind: true, ..Settings::default() };
+        save(&path, &s).unwrap();
+        assert_eq!(load(&path), s);
+        assert!(fs::read_to_string(&path).unwrap().contains("\"show_in\": \"taskbar\""));
         let _ = fs::remove_dir_all(&dir);
     }
 }
