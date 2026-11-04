@@ -50,6 +50,9 @@ pub struct Pod {
 
 /// A working entry with no event for this long is dropped (Esc, crash, closed terminal).
 const WORKING_FOR: Duration = Duration::minutes(10);
+/// A needs-you entry with no event for this long is dropped: Esc at a permission prompt sends
+/// no Stop or heartbeat, so it would otherwise keep the pod and the glow forever.
+const NEEDS_YOU_FOR: Duration = Duration::minutes(60);
 /// A finished entry clears itself after this (spec 5.2).
 const FINISHED_FOR: Duration = Duration::minutes(30);
 /// A reply at least this long toasts when it finishes (spec 5.2).
@@ -178,7 +181,7 @@ impl Sessions {
         self.entries.retain(|x| match x.status {
             Status::Finished => now - x.since < FINISHED_FOR,
             Status::Working => now - x.last < WORKING_FOR,
-            Status::NeedsYou => true,
+            Status::NeedsYou => now - x.last < NEEDS_YOU_FOR,
         });
         // Sessions that never sent SessionEnd must not grow this map forever (rough: mixes clocks).
         self.prompts.retain(|_, t| now - *t < MAX_FILE_AGE);
@@ -354,7 +357,7 @@ mod tests {
         assert!(!s.expire(t + Duration::minutes(29)));
         assert!(s.expire(t + Duration::minutes(30)));
         assert_eq!(s.rows().len(), 1);
-        assert_eq!(s.rows()[0].status, "needs_you"); // needs-you never times out
+        assert_eq!(s.rows()[0].status, "needs_you"); // needs-you outlives a finished row (it expires only after 60 min, see needs_you_expires_after_60_min)
     }
 
     #[test]
@@ -571,5 +574,16 @@ mod tests {
     fn post_tool_use_parses_as_heartbeat() {
         let e = parse_event(r#"{"hook_event_name":"PostToolUse","session_id":"s","cwd":"/x/p"}"#).unwrap();
         assert_eq!((e.kind, e.project.as_str()), (Kind::Heartbeat, "p"));
+    }
+
+    #[test]
+    fn needs_you_expires_after_60_min() {
+        // Esc at a permission prompt sends no Stop or heartbeat; the amber must not stay forever.
+        let t = Utc::now();
+        let mut s = Sessions::default();
+        s.apply(ev("a", needs()), t, t, false, true);
+        assert!(!s.expire(t + Duration::minutes(59)));
+        assert!(s.expire(t + Duration::minutes(60)));
+        assert!(s.pod().is_none());
     }
 }

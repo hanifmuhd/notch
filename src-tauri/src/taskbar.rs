@@ -42,6 +42,21 @@ impl Taskbar {
     }
 }
 
+/// Right edge of the left-hand taskbar items, from UI Automation (class, automation id, right
+/// edge). None unless Windows 11's XAML app buttons are present: on Windows 10 the buttons are
+/// not reported this way, and guessing would put the capsule over app icons (spec 5.5).
+pub fn apps_right(items: &[(String, String, i32)], tray_left: i32) -> Option<i32> {
+    const BUTTON: &str = "Taskbar.TaskListButtonAutomationPeer";
+    if !items.iter().any(|(c, _, _)| c == BUTTON) {
+        return None;
+    }
+    items
+        .iter()
+        .filter(|(c, id, right)| (c == BUTTON || id == "StartButton" || id == "SearchButton") && *right <= tray_left)
+        .map(|(_, _, right)| *right)
+        .max()
+}
+
 /// Reads the main taskbar with Win32 and UI Automation (spike S2, docs/spikes/taskbar-gap.md).
 /// None when anything is missing (e.g. Windows 10 layouts or Explorer restarting).
 #[cfg(windows)]
@@ -67,16 +82,13 @@ pub fn measure() -> Option<Taskbar> {
         let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER).ok()?;
         let root = uia.ElementFromHandle(tb).ok()?;
         let all = root.FindAll(TreeScope_Descendants, &uia.CreateTrueCondition().ok()?).ok()?;
-        let mut apps_right = r.left;
+        let mut items = Vec::new();
         for i in 0..all.Length().ok()? {
             let Ok(e) = all.GetElement(i) else { continue };
             let (Ok(class), Ok(id), Ok(b)) = (e.CurrentClassName(), e.CurrentAutomationId(), e.CurrentBoundingRectangle()) else { continue };
-            let (class, id) = (class.to_string(), id.to_string());
-            let left_item = class == "Taskbar.TaskListButtonAutomationPeer" || id == "StartButton" || id == "SearchButton";
-            if left_item && b.right <= tr.left {
-                apps_right = apps_right.max(b.right);
-            }
+            items.push((class.to_string(), id.to_string(), b.right));
         }
+        let apps_right = apps_right(&items, tr.left)?;
         Some(Taskbar { left: r.left, top: r.top, right: r.right, bottom: r.bottom, apps_right, tray_left: tr.left, auto_hide })
     }
 }
@@ -110,5 +122,19 @@ mod tests {
     #[ignore] // reads the real taskbar: cargo test print_taskbar -- --ignored --nocapture
     fn print_taskbar() {
         println!("{:?}", measure());
+    }
+
+    #[test]
+    fn apps_right_needs_windows_11_buttons() {
+        let item = |class: &str, id: &str, right| (class.to_string(), id.to_string(), right);
+        // Windows 11: app buttons found -> the last one's right edge.
+        let w11 = [item("ToggleButton", "StartButton", 55), item("Taskbar.TaskListButtonAutomationPeer", "a", 205), item("Taskbar.TaskListButtonAutomationPeer", "b", 865)];
+        assert_eq!(apps_right(&w11, 1669), Some(865));
+        // A button past the tray is not counted.
+        let past = [item("Taskbar.TaskListButtonAutomationPeer", "a", 865), item("Taskbar.TaskListButtonAutomationPeer", "x", 1700)];
+        assert_eq!(apps_right(&past, 1669), Some(865));
+        // Windows 10 (no XAML task-list buttons): unknown, so taskbar mode is not used.
+        let w10 = [item("Start", "StartButton", 48), item("MSTaskListWClass", "", 900)];
+        assert_eq!(apps_right(&w10, 1669), None);
     }
 }

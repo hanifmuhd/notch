@@ -85,7 +85,9 @@ const hasNumbers = (vm) => !['no_claude', 'logged_out', 'no_data'].includes(vm.p
 function renderPill(vm) {
   const left = el('span', 'ear ear--left');
   const right = el('span', 'ear ear--right');
-  if (flashText) {
+  if (vm.mode === 'taskbar_mini') {
+    left.append(ring(vm, 20)); // tight taskbar: rings only, the label below still says it all
+  } else if (flashText) {
     left.append(icon('i-bell', 'icon is-alert'), el('span', 'ear__flash', flashText));
   } else if (!hasNumbers(vm)) {
     const msg = vm.pill === 'no_claude' ? 'Install Claude Code to see your limits'
@@ -116,7 +118,8 @@ function renderPill(vm) {
 
 function renderPod(vm) {
   const p = vm.pod;
-  pod.hidden = !p || flashText != null;
+  // No pod in the taskbar: it would grow over app icons (the capsule's bell and glow say it).
+  pod.hidden = !p || flashText != null || (vm.mode || 'top') !== 'top';
   notch.classList.toggle('is-needs', !!p && p.status === 'needs_you');
   if (!p) return;
   const needs = p.status === 'needs_you';
@@ -216,7 +219,9 @@ let ageTimer;
 // spring in notch.css animates width and height together.
 function fitPanel() {
   notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
-  notch.style.setProperty('--panel-h', $('#panel-inner').scrollHeight + 'px');
+  // Never taller than the window; the content scrolls instead (e.g. settings with a WSL source).
+  const room = innerHeight - ((notch.dataset.mode || 'top') === 'top' ? 4 : 12);
+  notch.style.setProperty('--panel-h', Math.min($('#panel-inner').scrollHeight, room) + 'px');
 }
 
 // The window is a fixed size; only the visible shape takes the mouse (spec 4, approach A).
