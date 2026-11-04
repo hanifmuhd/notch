@@ -212,13 +212,35 @@ mod tests {
     use std::cell::RefCell;
     use std::time::Duration as StdDuration;
 
-    /// Per-test folder, so one test's alerts.json never reaches another's AppState.
     fn scratch_dir(name: &str) -> std::path::PathBuf {
         std::env::temp_dir().join(format!("notch-app-state-{}-{}", std::process::id(), name))
     }
 
-    fn state() -> AppState {
-        let s = AppState::new(Settings::default(), scratch_dir("unused").join("settings.json"));
+    /// An AppState in its own folder (alerts.json lands there), removed on drop, so no test
+    /// sees another's fired alerts even though tests run in parallel under one pid.
+    struct TestState(AppState, std::path::PathBuf);
+
+    impl std::ops::Deref for TestState {
+        type Target = AppState;
+        fn deref(&self) -> &AppState {
+            &self.0
+        }
+    }
+
+    impl Drop for TestState {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.1);
+        }
+    }
+
+    fn test_state(settings: Settings) -> TestState {
+        static N: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+        let dir = scratch_dir(&format!("t{}", N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)));
+        TestState(AppState::new(settings, dir.join("settings.json")), dir)
+    }
+
+    fn state() -> TestState {
+        let s = test_state(Settings::default());
         s.lock().source = Some(Source::Windows);
         s
     }
@@ -374,17 +396,14 @@ mod tests {
 
     #[test]
     fn fresh_auto_state_shows_no_data() {
-        let s = AppState::new(Settings::default(), scratch_dir("unused").join("settings.json"));
+        let s = test_state(Settings::default());
         assert_eq!(s.view(Local::now(), None).pill, crate::view::PillState::NoData);
     }
 
     #[test]
     fn stopped_wsl_with_start_wsl_off_is_not_booted() {
         let r = no_distro_running();
-        let s = AppState::new(
-            Settings { start_wsl: false, ..Settings::default() },
-            scratch_dir("unused").join("settings.json"),
-        );
+        let s = test_state(Settings { start_wsl: false, ..Settings::default() });
         s.try_start_refresh();
         assert!(matches!(fetch(&s, &r), Fetched::Failed));
         s.finish_refresh(Fetched::Failed);
@@ -402,7 +421,7 @@ mod tests {
             source: SourcePref::Wsl { distro: "Ubuntu".into() },
             ..Settings::default()
         };
-        let s = AppState::new(settings, scratch_dir("unused").join("settings.json"));
+        let s = test_state(settings);
         s.try_start_refresh();
         s.finish_refresh(Fetched::Reading(reading(40.0)));
         s.try_start_refresh();
@@ -416,13 +435,12 @@ mod tests {
 
     #[test]
     fn source_change_mid_detect_not_overwritten() {
-        let s = AppState::new(Settings::default(), scratch_dir("mid").join("settings.json"));
+        let s = test_state(Settings::default());
         let (old, _) = s.snapshot();
         // Detection for Auto is running; the user switches to Windows meanwhile.
         s.save_settings(Settings { source: SourcePref::Windows, ..Settings::default() }).unwrap();
         assert!(!s.set_detected(&old.source, Some(Source::Wsl { distro: "Ubuntu".into() })));
         assert_eq!(s.snapshot().1, Some(Source::Windows));
-        let _ = std::fs::remove_file(scratch_dir("mid").join("settings.json"));
     }
 
     #[test]
