@@ -99,6 +99,9 @@ pub fn clamp(mut s: Settings) -> Settings {
     if ![0, 5, 10, 15].contains(&s.prayer_remind) {
         s.prayer_remind = 10;
     }
+    if !crate::prayer_zones::ZONES.iter().any(|(code, _)| *code == s.prayer_zone) {
+        s.prayer_zone = Settings::default().prayer_zone;
+    }
     s
 }
 
@@ -257,6 +260,9 @@ mod tests {
         // Only Off / 5 / 10 / 15 are allowed.
         fs::write(&path, r#"{"prayer_remind":7}"#).unwrap();
         assert_eq!(load(&path).prayer_remind, 10);
+        // A zone that is not in JAKIM's list falls back to the default.
+        fs::write(&path, r#"{"prayer_zone":"XYZ99"}"#).unwrap();
+        assert_eq!(load(&path).prayer_zone, "WLY01");
         let _ = fs::remove_dir_all(&dir);
     }
 }
