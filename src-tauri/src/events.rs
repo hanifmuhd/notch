@@ -142,7 +142,6 @@ impl Sessions {
     }
 
     /// Newest first, at most 5.
-    #[allow(dead_code)] // shown by the panel (Task 9)
     pub fn rows(&self) -> Vec<SessionRow> {
         // Entries are pushed as they are seen, so the newest are last.
         self.entries
@@ -161,7 +160,6 @@ impl Sessions {
     }
 
     /// Every entry counts, including ones past the 5 shown.
-    #[allow(dead_code)] // shown by the pill (Task 9)
     pub fn attention(&self) -> usize {
         self.entries.len()
     }

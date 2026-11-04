@@ -44,9 +44,23 @@ const splitFull = (text) => {
   return m ? [m[1], m[2]] : [text, ''];
 };
 
+const bellIcon = () => {
+  const svg = alertIcon('');
+  svg.querySelector('use').setAttribute('href', '#i-bell');
+  return svg;
+};
+
+// A new session notice replaces the pill's content for 6 s (spec 5.3); a newer one restarts it.
+const FLASH_MS = 6000;
+let flashText = null;
+let flashTimer;
+let lastVm = null;
+
 function renderPill(vm) {
   const parts = [];
-  if (vm.pill === 'no_claude') {
+  if (flashText) {
+    parts.push(el('span', 'stat__value', flashText));
+  } else if (vm.pill === 'no_claude') {
     parts.push(el('span', 'stat__label', 'Install Claude Code to see your limits'));
   } else if (vm.pill === 'logged_out') {
     parts.push(el('span', 'stat__label', 'Log in to Claude Code'));
@@ -65,6 +79,12 @@ function renderPill(vm) {
     }
     if (vm.pill === 'stale') parts.push(stat('As of', vm.updated_text.replace(/^As of /, '')));
   }
+  if (!flashText && vm.attention > 0) {
+    const s = stat('', String(vm.attention));
+    s.firstChild.replaceWith(bellIcon());
+    s.append(el('span', 'sr-only', vm.attention === 1 ? ' session needs a look' : ' sessions need a look'));
+    parts.push(s);
+  }
   pill.replaceChildren(...parts);
   pill.classList.toggle('is-stale', ['stale', 'no_data', 'no_claude', 'logged_out'].includes(vm.pill));
 }
@@ -73,23 +93,46 @@ function renderLimit(key, lv) {
   const root = $(`[data-limit="${key}"]`);
   const f = (name) => root.querySelector(`[data-f="${name}"]`);
   const cls = LEVEL_CLASS[lv.level];
-  const hasData = lv.pace_text !== '';
+  const hasData = lv.value_text !== '–'; // an idle limit has a reading but no pace
   f('value').textContent = lv.value_text;
   f('value').className = ('limit__value ' + cls).trim();
   f('fill').className = ('meter__fill ' + cls).trim();
   f('fill').style.width = lv.used_pct + '%';
-  f('pace').hidden = !hasData;
+  f('pace').hidden = lv.pace_text === '';
   f('pace').style.left = lv.pace_pct + '%';
   f('meter').setAttribute('aria-valuenow', String(Math.round(lv.used_pct)));
-  f('meter').setAttribute('aria-valuetext', hasData ? `${lv.value_text} used, ${lv.pace_text}` : 'No reading yet');
+  f('meter').setAttribute('aria-valuetext', hasData ? `${lv.value_text} used, ${lv.pace_text || lv.reset_text}` : 'No reading yet');
   f('reset').textContent = lv.reset_text;
   f('pace-text').textContent = lv.pace_text;
   f('runs').textContent = lv.runs_out_text || '';
   f('runs').hidden = !lv.runs_out_text;
 }
 
+/** "now" under a minute, then "2m", then "1h". */
+const ageText = (sinceMs) => {
+  const mins = Math.floor((Date.now() - sinceMs) / 60000);
+  return mins < 1 ? 'now' : mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h`;
+};
+
+function renderSessions(vm) {
+  const rows = vm.sessions || [];
+  $('#sessions').hidden = rows.length === 0;
+  $('#session-list').replaceChildren(...rows.map((r) => {
+    const li = el('li', 'session');
+    const needs = r.status === 'needs_you';
+    li.append(
+      el('span', 'session__project', r.project || 'Claude'),
+      el('span', 'session__status' + (needs ? ' is-warn' : ''), needs ? 'needs you' : 'finished'),
+      el('span', 'session__age', ageText(r.since_ms)),
+    );
+    return li;
+  }));
+}
+
 function render(vm) {
+  lastVm = vm;
   renderPill(vm);
+  renderSessions(vm);
   fitClosed();
   const noClaude = vm.pill === 'no_claude';
   // Logged out hides the old numbers too; the footer text carries the log-in hint.
@@ -122,6 +165,7 @@ let closeTimer;
 let fadeTimer;
 
 let closing = false;
+let ageTimer;
 let sentWidth = 0;
 
 const sizePanel = () => call('set_panel_open', { open: true, height: Math.ceil(panel.offsetHeight) });
@@ -142,11 +186,14 @@ async function setOpen(open) {
   pill.setAttribute('aria-expanded', String(open));
   clearTimeout(fadeTimer);
   closing = !open;
+  clearInterval(ageTimer);
   if (open) {
     await sizePanel(); // grow the window before the panel shows
     if (isOpen) notch.classList.add('is-open');
+    ageTimer = setInterval(() => { if (lastVm) renderSessions(lastVm); }, 30000);
   } else {
     notch.classList.remove('is-open');
+    call('sessions_seen'); // closing after a look clears finished rows (spec 5.2)
     fadeTimer = setTimeout(() => {
       showView('usage');
       closing = false;
@@ -183,7 +230,7 @@ document.addEventListener('keydown', (e) => {
   call('focus_previous');
 });
 
-$('#open-settings').addEventListener('click', () => showView('settings', $('#close-settings')));
+$('#open-settings').addEventListener('click', () => { showView('settings', $('#close-settings')); loadTaskAlerts(); });
 $('#close-settings').addEventListener('click', () => showView('usage', $('#open-settings')));
 $('#refresh').addEventListener('click', () => call('refresh_now'));
 $('#install').addEventListener('click', () => call('open_install_page'));
@@ -229,6 +276,7 @@ function renderSettings(screens) {
   for (const r of document.querySelectorAll('input[name="position"]')) r.checked = r.value === settings.position;
   $('#s-start-wsl').checked = settings.start_wsl;
   $('#s-start-wsl-row').hidden = settings.source.kind !== 'wsl';
+  $('#s-task-finished').checked = settings.task_finished;
   for (const key of ['session', 'week']) {
     $(`#t-${key}`).value = settings[key + '_threshold'];
     $(`[data-out="${key}"]`).textContent = settings[key + '_threshold'] + '%';
@@ -257,6 +305,36 @@ sourceSel.addEventListener('change', () => {
   save({ source: v.startsWith('wsl:') ? { kind: 'wsl', distro: v.slice(4) } : { kind: v } });
 });
 $('#s-start-wsl').addEventListener('change', (e) => save({ start_wsl: e.target.checked }));
+$('#s-task-finished').addEventListener('change', (e) => save({ task_finished: e.target.checked }));
+
+// ---------- task alerts switch (reads Claude's settings.json, may take seconds on WSL) ----------
+
+const taskSwitch = $('#s-task-alerts');
+const taskHint = $('#s-task-hint');
+
+function showTaskAlerts(t, error) {
+  taskSwitch.checked = !!(t && t.on);
+  taskSwitch.disabled = !(t && t.available);
+  const hint = error || (t && t.hint) || '';
+  taskHint.textContent = hint;
+  taskHint.hidden = !hint;
+}
+
+async function loadTaskAlerts() {
+  taskSwitch.disabled = true;
+  try { showTaskAlerts(await invoke('get_task_alerts')); } catch (e) { showTaskAlerts(null, String(e)); }
+}
+
+taskSwitch.addEventListener('change', async () => {
+  const on = taskSwitch.checked;
+  taskSwitch.disabled = true; // one edit at a time
+  try { showTaskAlerts(await invoke('set_task_alerts', { on })); } catch (e) {
+    taskSwitch.checked = !on;
+    taskSwitch.disabled = false;
+    taskHint.textContent = String(e);
+    taskHint.hidden = false;
+  }
+});
 for (const input of document.querySelectorAll('[data-threshold]')) {
   const key = input.dataset.threshold;
   input.addEventListener('input', () => { $(`[data-out="${key}"]`).textContent = input.value + '%'; });
@@ -270,6 +348,11 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
   await Promise.all([400, 500, 600].map((w) => document.fonts.load(`${w} 14px "Public Sans"`))).catch(() => {});
   // Listen before the first fetch, so a refresh that finishes meanwhile is neither missed nor its announcement lost.
   await listen('usage-updated', (e) => {
+    if (e.payload.flash) {
+      flashText = e.payload.flash; // the same text arrives in `announce`, so it is spoken once
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => { flashText = null; if (lastVm) render(lastVm); }, FLASH_MS);
+    }
     render(e.payload);
     if (e.payload.announce) announce(e.payload.announce);
   });

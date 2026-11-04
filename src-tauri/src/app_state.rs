@@ -87,6 +87,8 @@ impl AppState {
         let mut vm = view::build(s.reading.as_ref(), s.last_ok, s.source.as_ref(), &s.settings, s.logged_out, now);
         vm.announce = announce;
         vm.refreshing = s.in_flight;
+        vm.sessions = s.sessions.rows();
+        vm.attention = s.sessions.attention();
         vm
     }
 
@@ -511,5 +513,19 @@ mod tests {
         second.try_start_refresh();
         assert!(second.finish_refresh(Fetched::Reading(r)).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn view_carries_sessions() {
+        use crate::events::{HookEvent, Kind};
+        let s = state();
+        let ev = |id: &str, kind| (HookEvent { session_id: id.into(), project: "own".into(), kind }, Utc::now(), false);
+        s.apply_events(vec![ev("a", Kind::NeedsYou("m".into())), ev("b", Kind::Finished)], Utc::now());
+        let vm = s.view(Local::now(), None);
+        assert_eq!(vm.attention, 2);
+        assert_eq!(vm.sessions.len(), 2);
+        assert_eq!(vm.sessions[0].status, "finished"); // newest first
+        assert_eq!(vm.sessions[1].status, "needs_you");
+        assert_eq!(vm.flash, None);
     }
 }

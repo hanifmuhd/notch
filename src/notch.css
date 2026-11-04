@@ -117,6 +117,17 @@ body { color: var(--ink); font-family: var(--font-sans); font-size: 16px; line-h
 @keyframes spin { to { transform: rotate(360deg); } }
 .panel__actions { display: flex; gap: 4px; margin-right: -12px; }
 
+/* sessions that need you or finished (task alerts) */
+.sessions { margin-top: 16px; }
+.sessions__title { margin: 0 0 4px; font-size: var(--fs-label); font-weight: 400; color: var(--ink-muted); }
+.sessions__list { margin: 0; padding: 0; list-style: none; }
+.session { display: flex; align-items: baseline; gap: 12px; min-height: 24px; font-size: var(--fs-small); }
+.session__project { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session__status { color: var(--ink-muted); }
+.session__status.is-warn { color: var(--warn); }
+.session__age { color: var(--ink-muted); min-width: 3ch; text-align: right; }
+.setting__group { display: block; font-size: var(--fs-label); color: var(--ink-muted); }
+
 /* no Claude Code found: the limits give way to the install link */
 .notice { margin: 0 0 4px; font-size: var(--fs-label); }
 .link-btn {
