@@ -58,7 +58,7 @@ Who installs the hook: **a Settings switch (owner)** rather than README steps.
 ### 5.1 Hook install (Settings switch)
 
 - Settings gets a **Task alerts** section: a switch "Show when Claude needs you" (installs/removes hooks) and a checkbox "Also when a task finishes" (default on; filters `Stop` in the app, the hook stays) **(Claude's call)**.
-- The `Notification` hook uses a matcher so it fires only for permission prompts and questions to the user (`permission_prompt|elicitation_dialog`, names confirmed in S1). The ~60 s "waiting for your input" idle notice is not hooked **(owner)**.
+- "Needs you" = permission prompts and questions only; the ~60 s "waiting for your input" idle notice is ignored **(owner)**. Per spike S1 (`docs/spikes/hook-payloads.md`): hook `Notification` with no matcher and keep only `notification_type` `permission_prompt` / `elicitation_dialog` in the app; also hook `PermissionRequest` as a second signal, de-duplicated per session.
 - Reading the switch state is a user action, but it must not boot a stopped distro when "Start WSL" is off: then the switch is disabled with the hint "Start WSL to change this" **(Claude's call)**.
 - When the usage source changes while task alerts are on, the app removes its entries from the old install (best effort) and adds them to the new one **(Claude's call)**.
 - Target file: for source Windows, `%USERPROFILE%\.claude\settings.json`; for source WSL distro X, `\\wsl.localhost\X\<home>\.claude\settings.json`, where `<home>` comes from `wsl.exe -d X -- bash -lc 'printf %s "$HOME"'`. Undetected or not found: the switch is disabled with the hint "Install or find Claude Code first".
@@ -74,7 +74,7 @@ Who installs the hook: **a Settings switch (owner)** rather than README steps.
 - Events folder: `<app config dir>\events\`. A background loop (1 s) reads `*.json` oldest first, deletes each after reading, ignores `*.tmp`, deletes unreadable files and anything older than 1 day.
 - Events written while the app was closed: at start, files older than 10 minutes are dropped; newer ones go into the Sessions list without a toast or pill flash **(Claude's call)**.
 - Session state, keyed by `session_id`, project name = last folder of `cwd` **(Claude's call)**:
-  - `Notification` → **needs you** (with the message text).
+  - `Notification` (permission/question type) or `PermissionRequest` → **needs you** (with the message text, or `Claude wants to use <tool_name>`). Already in needs-you = no second toast.
   - `Stop` → **finished** (dropped if "Also when a task finishes" is off). It toasts and flashes the pill only when the reply took **1 minute or more**, measured from that session's last `UserPromptSubmit`; shorter replies appear quietly in the Sessions list **(owner)**. No prompt seen for that session (e.g. app started mid-task) = treat as long.
   - `UserPromptSubmit` → removed (you are back in that session); its time is kept for the 1-minute rule.
   - `SessionEnd` → removed.
