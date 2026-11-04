@@ -4,7 +4,7 @@
 
 **Goal:** Show JAKIM prayer times for a chosen zone in the notch panel, and alert with a notch banner plus a Windows notification at each prayer time and N minutes before.
 
-**Architecture:** A pure `prayer.rs` parses JAKIM's month JSON and answers "next / previous prayer" and "which alert is due"; a small fetcher downloads the month with Windows `curl.exe` through the existing `Runner` and caches it beside settings.json. A 15 s loop in main.rs emits the view and fires alerts through the existing flash + toast path; the webview renders a Prayer section and a longer banner.
+**Architecture:** A pure `prayer.rs` parses JAKIM's month JSON and answers "next / previous prayer" and "which alert is due"; a small fetcher downloads the month with Windows `curl.exe` through the existing `Runner` and caches it beside settings.json. A prayer thread in main.rs sleeps until the next alert moment (capped at 60 s, so sleep and clock changes are caught), then emits the view and fires alerts through the existing flash + toast path; the webview renders a Prayer section and a longer banner.
 
 **Tech Stack:** Tauri v2, Rust (chrono, chrono-tz, serde_json), plain HTML/CSS/JS.
 
@@ -46,9 +46,9 @@
 **Files:** Create `src-tauri/src/prayer.rs`.
 
 **Interfaces:**
-- Produces: `pub enum Prayer { Subuh, Zohor, Asar, Maghrib, Isyak }` with `name()`; `pub struct Day { date: NaiveDate, times: [DateTime<Utc>; 5] }`; `pub fn parse_month(json: &str) -> Option<Vec<Day>>`; `pub fn next(days: &[Day], now: DateTime<Utc>) -> Option<(Prayer, DateTime<Utc>)>`; `pub fn previous(days: &[Day], now) -> Option<DateTime<Utc>>`; `pub fn today<'a>(days: &'a [Day], now) -> Option<&'a Day>` (Malaysia date); `#[derive(Serialize, Deserialize, Default)] pub struct Fired { keys: Vec<String> }`; `pub enum Alert { Time(Prayer, DateTime<Utc>), Remind(Prayer, DateTime<Utc>, u32) }`; `pub fn due(days: &[Day], now, remind_min: u32, fired: &mut Fired) -> Vec<Alert>` (key `YYYY-MM-DD-<prayer>-<time|remind>`, window: fire if `now` is within [moment, moment + 2 min], else skip; keep only the last 3 days of keys).
+- Produces: `pub enum Prayer { Subuh, Zohor, Asar, Maghrib, Isyak }` with `name()`; `pub struct Day { date: NaiveDate, times: [DateTime<Utc>; 5] }`; `pub fn parse_month(json: &str) -> Option<Vec<Day>>`; `pub fn next(days: &[Day], now: DateTime<Utc>) -> Option<(Prayer, DateTime<Utc>)>`; `pub fn previous(days: &[Day], now) -> Option<DateTime<Utc>>`; `pub fn today<'a>(days: &'a [Day], now) -> Option<&'a Day>` (Malaysia date); `#[derive(Serialize, Deserialize, Default)] pub struct Fired { keys: Vec<String> }`; `pub enum Alert { Time(Prayer, DateTime<Utc>), Remind(Prayer, DateTime<Utc>, u32) }`; `pub fn due(days: &[Day], now, remind_min: u32, fired: &mut Fired) -> Vec<Alert>`; `pub fn next_wake(days: &[Day], now, remind_min: u32) -> Option<DateTime<Utc>>` (the next prayer or reminder moment after `now`) (key `YYYY-MM-DD-<prayer>-<time|remind>`, window: fire if `now` is within [moment, moment + 2 min], else skip; keep only the last 3 days of keys).
 
-- [ ] Failing tests: `parses_jakim_month` (fixture from the S1 response saved as `src-tauri/tests/fixtures/jakim-WLY01.json`: 4 Nov Maghrib = 18:58 +08), `bad_month_json_is_none` (garbage, `status` not `OK!`, missing field), `next_after_isyak_is_tomorrow_subuh`, `month_end_without_next_month_is_none`, `due_fires_once` (at Maghrib → Time once; again → nothing), `reminder_fires_n_minutes_before` (10 → Remind at 18:48; 0 → none), `missed_alert_older_than_window_is_skipped` (now = Maghrib + 2 h → nothing), `fired_keeps_three_days`.
+- [ ] Failing tests: `parses_jakim_month` (fixture from the S1 response saved as `src-tauri/tests/fixtures/jakim-WLY01.json`: 4 Nov Maghrib = 18:58 +08), `bad_month_json_is_none` (garbage, `status` not `OK!`, missing field), `next_after_isyak_is_tomorrow_subuh`, `month_end_without_next_month_is_none`, `due_fires_once` (at Maghrib → Time once; again → nothing), `reminder_fires_n_minutes_before` (10 → Remind at 18:48; 0 → none), `missed_alert_older_than_window_is_skipped` (now = Maghrib + 2 h → nothing), `fired_keeps_three_days`, `next_wake_is_next_reminder_or_prayer` (17:00 with remind 10 → 18:48; 18:50 → 18:58).
 - [ ] Implement; `WINTEST prayer::` → PASS.
 - [ ] Commit `Parse JAKIM prayer times and decide which alert is due`.
 
@@ -64,7 +64,7 @@
 
 ### Task 4: Loop, alerts and view model
 
-**Files:** Modify `src-tauri/src/main.rs` (15 s prayer loop: when `prayer_on`, ensure this and next month cached (fetch on miss, retry hourly), `due()` → toast + flash text, emit), `src-tauri/src/view.rs` (`ViewModel.prayer: Option<PrayerView { place, next_name, next_time, next_in, progress_pct, times: Vec<(name, HH:MM, state "past"|"next"|"later")>, unavailable: bool }>` and `banner: Option<(String, u32 /*seconds*/)>`).
+**Files:** Modify `src-tauri/src/main.rs` (prayer thread: sleep until `next_wake()`, at most 60 s; when `prayer_on`, ensure this and next month cached (fetch on miss, retry hourly), `due()` → toast + flash text, emit), `src-tauri/src/view.rs` (`ViewModel.prayer: Option<PrayerView { place, next_name, next_time, next_in, progress_pct, times: Vec<(name, HH:MM, state "past"|"next"|"later")>, unavailable: bool }>` and `banner: Option<(String, u32 /*seconds*/)>`).
 
 - [ ] Failing tests (view.rs): `prayer_view_next_and_progress` (now 18:00 on 4 Nov → next Maghrib 18:58, `in 58m`, progress between Asar 16:20 and Maghrib), `prayer_view_unavailable`.
 - [ ] Implement the loop (no work when `prayer_on` is off); toasts via the existing notification builder; banner text per Global Constraints.
