@@ -69,6 +69,7 @@ function ring(vm, size, big = false) {
 let lastVm = null;
 let flash = null; // { text, icon, prayer }: a session notice or a prayer banner shown in the closed notch
 let flashTimer;
+let moon = false; // a prayer banner ran out while the notch was closed; a small moon stays until it is opened
 let tasksOn = null; // task alerts switch, read lazily (it may take seconds over WSL)
 
 /** "now" under a minute, then "2m", then "1h". */
@@ -96,9 +97,9 @@ function renderPill(vm) {
   const right = el('span', 'ear ear--right');
   if (vm.mode === 'taskbar_mini') {
     // tight taskbar: rings only (a moon during a prayer banner); the label below still says it all
-    left.append(flash && flash.prayer ? icon('i-moon', 'icon is-prayer') : pillRing(vm));
+    left.append((flash && flash.prayer) || moon ? icon('i-moon', 'icon is-prayer') : pillRing(vm));
   } else if (flash) {
-    const text = flash.prayer && vm.mode !== 'top' ? flash.short : flash.text; // the capsule is capped at 150 px
+    const text = flash.prayer && vm.mode !== 'top' ? flash.short : flash.text; // the capsule is capped at 172 px
     left.append(icon(flash.icon, flash.prayer ? 'icon is-prayer' : 'icon is-alert'), el('span', 'ear__flash' + (flash.prayer ? ' is-prayer' : ''), text));
   } else if (!hasNumbers(vm)) {
     const msg = vm.pill === 'no_claude' ? 'Install Claude Code to see your limits'
@@ -116,12 +117,13 @@ function renderPill(vm) {
         el('span', 'sr-only', vm.attention === 1 ? ' session needs a look' : ' sessions need a look'));
       right.append(b);
     }
+    if (moon) right.append(icon('i-moon', 'icon ear__moon'));
   }
   pill.replaceChildren(left, right);
   pill.classList.toggle('is-quiet', !flash && (!hasNumbers(vm) || vm.pill === 'stale'));
   // Screen readers get the whole closed state in one label.
   pill.setAttribute('aria-label', (flash && flash.text) || (hasNumbers(vm)
-    ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}${working(vm) ? '; a session is working' : ''}`
+    ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}${working(vm) ? '; a session is working' : ''}${moon ? '; a prayer alert is waiting' : ''}`
     : left.textContent));
 }
 
@@ -296,7 +298,10 @@ function reportHits() {
 function setOpen(open) {
   clearTimeout(closeTimer);
   clearTimeout(hoverTimer);
-  if (open) stopSound(); // opening the notch is "seen": the sound stops
+  if (open) {
+    stopSound(); // opening the notch is "seen": the sound stops and the moon goes
+    if (moon) { moon = false; if (lastVm) renderPill(lastVm); }
+  }
   if (open === isOpen) return;
   isOpen = open;
   pill.setAttribute('aria-expanded', String(open));
@@ -461,8 +466,13 @@ function takeFlash(vm) {
     : vm.flash ? { text: vm.flash, icon: 'i-bell', ms: FLASH_MS } : null;
   if (!next) return;
   flash = next;
+  if (next.prayer) moon = false; // the new banner shows in full first
   clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { flash = null; if (lastVm) render(lastVm); }, next.ms);
+  flashTimer = setTimeout(() => {
+    if (next.prayer && !isOpen) moon = true; // like the bell: it stays until the notch is opened
+    flash = null;
+    if (lastVm) render(lastVm);
+  }, next.ms);
 }
 
 (async () => {

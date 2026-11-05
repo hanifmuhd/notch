@@ -57,6 +57,7 @@ button { font: inherit; color: inherit; }
 .ear__flash.is-prayer { overflow: hidden; text-overflow: ellipsis; }
 .icon.is-prayer { color: var(--week); }
 .ear__bell { display: inline-flex; align-items: center; gap: 4px; color: var(--alert); }
+.ear__moon { flex: none; color: var(--week); }
 .pill.is-quiet { justify-content: center; }
 .icon { width: 14px; height: 14px; flex: none; }
 .icon.is-alert { color: var(--alert); }
@@ -200,9 +201,9 @@ button { font: inherit; color: inherit; }
 
 /* the window's bottom-right corner sits on the taskbar, just left of the tray */
 .notch[data-mode^="taskbar"] { top: auto; bottom: 8px; left: auto; right: 0; transform: none; }
-.notch[data-mode^="taskbar"] .pill { min-width: 0; max-width: 150px; border-radius: 16px; box-shadow: 0 0 0 1px #ffffff14; }
+.notch[data-mode^="taskbar"] .pill { min-width: 0; max-width: 172px; border-radius: 16px; box-shadow: 0 0 0 1px #ffffff14; }
 /* the capsule never grows past the width the taskbar fit was measured for: long text ellipsizes */
-.notch[data-mode^="taskbar"] .pill { padding: 0 10px; gap: 10px; } /* tighter, so all of "100%  4:59  🔔 2" fits */
+.notch[data-mode^="taskbar"] .pill { padding: 0 10px; gap: 10px; } /* tighter, so "100%  4:59  bell  moon" fits in 172 px */
 .notch[data-mode^="taskbar"] .ear { min-width: 0; gap: 5px; }
 .notch[data-mode^="taskbar"] .ear > span:not(.ear__bell):not(.sr-only) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .notch[data-mode^="taskbar"] .pill::before, .notch[data-mode^="taskbar"] .pill::after,

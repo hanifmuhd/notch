@@ -68,7 +68,7 @@ impl Mode {
 }
 
 /// Capsule widths and the gap kept to the icons and the tray, logical px.
-const CAPSULE_FULL: f64 = 150.0;
+const CAPSULE_FULL: f64 = 172.0; // fits "100%  4:59  bell 9  moon" (measured 170 px)
 const CAPSULE_MINI: f64 = 44.0;
 const CAPSULE_MARGIN: f64 = 8.0;
 
