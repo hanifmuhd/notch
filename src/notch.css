@@ -96,6 +96,7 @@ button { font: inherit; color: inherit; }
 .ring__arc.is-week { stroke: var(--week); }
 .ring__arc.is-alert { stroke: var(--alert); }
 .ring__arc.is-full { stroke: var(--danger); }
+.ring .ring__busy { fill: var(--week); stroke: var(--surface); stroke-width: 1.8; }
 
 /* the panel: the same black, growing from the pill's size with a spring */
 .panel {
@@ -226,7 +227,8 @@ button { font: inherit; color: inherit; }
 .notch[data-mode^="taskbar"] { top: auto; bottom: 8px; left: auto; right: 0; transform: none; }
 .notch[data-mode^="taskbar"] .pill { min-width: 0; max-width: 150px; border-radius: 16px; box-shadow: 0 0 0 1px #ffffff14; }
 /* the capsule never grows past the width the taskbar fit was measured for: long text ellipsizes */
-.notch[data-mode^="taskbar"] .ear { min-width: 0; }
+.notch[data-mode^="taskbar"] .pill { padding: 0 10px; gap: 10px; } /* tighter, so all of "100%  4:59  🔔 2" fits */
+.notch[data-mode^="taskbar"] .ear { min-width: 0; gap: 5px; }
 .notch[data-mode^="taskbar"] .ear > span:not(.ear__bell):not(.sr-only) { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .notch[data-mode^="taskbar"] .pill::before, .notch[data-mode^="taskbar"] .pill::after,
 .notch[data-mode^="taskbar"] .panel::before, .notch[data-mode^="taskbar"] .panel::after { display: none; }

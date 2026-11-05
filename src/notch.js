@@ -82,12 +82,21 @@ const hasNumbers = (vm) => !['no_claude', 'logged_out', 'no_data'].includes(vm.p
 
 // ---------- closed notch: rings and % on the left ear, countdown on the right ----------
 
+// In the taskbar there is no pod, so a still blue dot on the ring's corner says a session is
+// working (still, not blinking: a nonstop animation costs ~9 % of a core).
+const working = (vm) => vm.mode !== 'top' && vm.pod && vm.pod.status === 'working';
+function pillRing(vm) {
+  const r = ring(vm, 20);
+  if (working(vm)) r.append(svgEl('circle', { cx: 19.6, cy: 4.4, r: 3.8, class: 'ring__busy' }));
+  return r;
+}
+
 function renderPill(vm) {
   const left = el('span', 'ear ear--left');
   const right = el('span', 'ear ear--right');
   if (vm.mode === 'taskbar_mini') {
     // tight taskbar: rings only (a moon during a prayer banner); the label below still says it all
-    left.append(flash && flash.prayer ? icon('i-moon', 'icon is-prayer') : ring(vm, 20));
+    left.append(flash && flash.prayer ? icon('i-moon', 'icon is-prayer') : pillRing(vm));
   } else if (flash) {
     const text = flash.prayer && vm.mode !== 'top' ? flash.short : flash.text; // the capsule is capped at 150 px
     left.append(icon(flash.icon, flash.prayer ? 'icon is-prayer' : 'icon is-alert'), el('span', 'ear__flash' + (flash.prayer ? ' is-prayer' : ''), text));
@@ -97,7 +106,7 @@ function renderPill(vm) {
     left.append(el('span', 'ear__muted', msg));
   } else {
     const s = vm.session;
-    left.append(ring(vm, 20), el('span', 'ear__pct ' + LEVEL[s.level], s.value_text));
+    left.append(pillRing(vm), el('span', 'ear__pct ' + LEVEL[s.level], s.value_text));
     if (vm.pill === 'full' && vm.pill_text) right.append(el('span', 'ear__count is-full', vm.pill_text));
     else if (vm.pill === 'stale') right.append(el('span', 'ear__muted', vm.updated_text.replace(/^As of /, 'as of ')));
     else right.append(el('span', 'ear__count', s.countdown_text));
@@ -112,7 +121,7 @@ function renderPill(vm) {
   pill.classList.toggle('is-quiet', !flash && (!hasNumbers(vm) || vm.pill === 'stale'));
   // Screen readers get the whole closed state in one label.
   pill.setAttribute('aria-label', (flash && flash.text) || (hasNumbers(vm)
-    ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}`
+    ? `Claude usage: session ${vm.session.value_text}, ${vm.session.span_text || vm.session.countdown_text}; week ${vm.week.value_text}${working(vm) ? '; a session is working' : ''}`
     : left.textContent));
 }
 
