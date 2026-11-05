@@ -7,3 +7,4 @@ src-tauri/target/
 src-tauri/gen/
 inspiration/
 .impeccable/hook.cache.json
+graphify-out/
