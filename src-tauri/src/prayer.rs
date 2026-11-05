@@ -130,6 +130,26 @@ pub fn load_days(dir: &Path, zone: &str, now: DateTime<Utc>) -> Vec<Day> {
         .collect()
 }
 
+/// Deletes cached months that are no longer needed: other zones' files at once, and last month
+/// once Subuh on the 1st has passed (until then its Isyak is still the last prayer). Keeps the
+/// zone's this and next month, and anything that is not a prayer cache.
+pub fn prune(dir: &Path, zone: &str, days: &[Day], now: DateTime<Utc>) {
+    let d = now.with_timezone(&Kuala_Lumpur).date_naive();
+    let mut keep = vec![d, d.checked_add_months(chrono::Months::new(1)).unwrap_or(d)];
+    let subuh_passed = today(days, now).is_some_and(|t| now >= t.times[0]);
+    if d.day() == 1 && !subuh_passed {
+        keep.push(d.pred_opt().unwrap_or(d));
+    }
+    let keep: Vec<_> = keep.iter().map(|k| cache_path(dir, zone, (k.year(), k.month()))).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for path in entries.flatten().map(|e| e.path()) {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if name.starts_with("prayer-") && name.ends_with(".json") && !keep.contains(&path) {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 /// Every prayer moment in order.
 fn moments(days: &[Day]) -> impl Iterator<Item = (NaiveDate, Prayer, DateTime<Utc>)> + '_ {
     days.iter().flat_map(|d| PRAYERS.iter().zip(d.times).map(move |(p, t)| (d.date, *p, t)))
@@ -364,6 +384,33 @@ mod tests {
         let d = load_days(&dir, "WLY01", my(4, 12, 0));
         assert!(today(&d, my(4, 12, 0)).is_some());
         assert!(load_days(&dir, "WLY02", my(4, 12, 0)).is_empty()); // another zone's month is not used
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_drops_other_zones_now_and_last_month_after_subuh_on_the_1st() {
+        let dir = std::env::temp_dir().join(format!("notch-prune-{}", std::process::id()));
+        let at = |d: u32, h: u32, m: u32| Kuala_Lumpur.with_ymd_and_hms(2026, 12, d, h, m, 0).unwrap().with_timezone(&Utc);
+        let dec = parse_month(r#"{"status":"OK!","prayerTime":[{"date":"01-Dis-2026","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}]}"#).unwrap();
+        let names = ["prayer-SGR01-2026-11.json", "prayer-SGR01-2026-12.json", "prayer-SGR01-2027-01.json",
+            "prayer-WLY01-2026-12.json", "settings.json", "prayer-SGR01-2026-12.json.tmp"];
+        let left = |now| {
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            for n in names {
+                std::fs::write(dir.join(n), "x").unwrap();
+            }
+            prune(&dir, "SGR01", &dec, now);
+            let mut v: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+            v.sort();
+            v
+        };
+        // 1 Dec before Subuh: November stays, the other zone goes.
+        assert_eq!(left(at(1, 5, 51)), ["prayer-SGR01-2026-11.json", "prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
+        // From Subuh on 1 Dec: November goes too.
+        assert_eq!(left(at(1, 5, 52)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
+        // Later days never keep last month.
+        assert_eq!(left(at(2, 4, 0)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -68,7 +68,7 @@ The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format js
 
 Task alerts use Claude Code's own hooks. Each hook copies the whole event Claude Code hands it into a file in the app's folder on your PC. That copy can include your prompt, Claude's last reply, or the command or file it asked permission for. The app reads each file and deletes it within about a second; files written while the app is closed are deleted at its next start (after a day at most). Nothing is sent anywhere.
 
-Prayer times, when on, download your zone's times for this month from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, and next month's on the last day of the month, so they are in before Maghrib. It also downloads when you change zone. Only the zone code and the month's first and last dates are sent. The times are kept beside the settings file.
+Prayer times, when on, download your zone's times for this month from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, and next month's on the last day of the month, so they are in before Maghrib. It also downloads when you change zone. Only the zone code and the month's first and last dates are sent. The times are kept beside the settings file. Last month's times are deleted after Subuh on the 1st, and another zone's times as soon as you change zone.
 
 To look for updates, the notch asks GitHub (`api.github.com`) for the newest release when it starts and every 6 hours, with Windows' own `curl.exe`. Nothing about you is sent. Clicking **Update** downloads the installer from the project's GitHub releases page.
 

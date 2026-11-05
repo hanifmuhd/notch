@@ -501,6 +501,7 @@ fn track_prayer(app: AppHandle) {
                 let mut days = prayer::load_days(&dir, &s.prayer_zone, now);
                 // Before the download, so a new zone never shows with the old zone's times.
                 state.set_prayer_days(days.clone());
+                prayer::prune(&dir, &s.prayer_zone, &days, now);
                 let missing = prayer::missing_months(&days, now);
                 let retry_due = tried.as_ref().is_none_or(|(z, at)| *z != s.prayer_zone || now - *at >= chrono::Duration::hours(1));
                 if !missing.is_empty() && retry_due {
