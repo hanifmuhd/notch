@@ -23,6 +23,20 @@ It downloads the newest installer, installs it quietly and starts the notch.
 
 **With the installer.** Download `ClaudeNotch-setup.exe` from the [latest release](https://github.com/hanifmuhd/notch/releases/latest) and run it. Windows SmartScreen may warn that the app is unrecognised, because the installer is not signed. Choose **More info**, then **Run anyway**. The notch appears at the top of your screen when the install ends.
 
+### On a Mac (experimental, untested)
+
+The Mac version is new and nobody has tried it on a real Mac yet. For now it is a menu bar item, not a notch: the ring with your session % and countdown, and a menu with the session and week lines, the next prayer, updates, settings and Quit. Alerts and prayer times come as Mac notifications. Task alerts and the bell and azan sounds are not on the Mac yet. Please report what works and what does not.
+
+**With one command.** Open Terminal and paste:
+
+```
+curl -fsSL https://raw.githubusercontent.com/hanifmuhd/notch/main/install.sh | sh
+```
+
+It downloads the newest version into Applications and opens it, with no security prompt. Run it again, or choose **Update to x.y.z** in the menu, to update.
+
+**With the disk image.** Download `ClaudeNotch-mac.dmg` from the [latest release](https://github.com/hanifmuhd/notch/releases/latest) and drag the app to Applications. The app is not signed by Apple, so the first time macOS says it cannot check it: open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
 ## Using it
 
 - Closed: the double ring and your session % on the left, the time until the session resets on the right (`1:32`, or `45m` under an hour). Amber means you passed your alert level, red means full (`back in 1:32`), `ready` means no session is running.
@@ -96,6 +110,8 @@ powershell.exe -NoProfile -Command '$env:Path = [Environment]::GetEnvironmentVar
 ```
 
 The installer lands in `C:\Users\hanif\code\notch-target\release\bundle\nsis\`. Use `cargo test` instead of `cargo tauri build` to run the tests. Always run cargo through PowerShell, not from Linux.
+
+The Mac version is built by GitHub Actions (`.github/workflows/mac.yml`) on macOS runners: publishing a release attaches `ClaudeNotch-mac.zip` and `ClaudeNotch-mac.dmg` to it.
 
 To release, raise `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, build, then attach the installer under the fixed name `ClaudeNotch-setup.exe`, which the install command and the download link expect:
 
