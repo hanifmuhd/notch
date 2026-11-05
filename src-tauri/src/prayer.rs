@@ -132,7 +132,7 @@ pub fn load_days(dir: &Path, zone: &str, now: DateTime<Utc>) -> Vec<Day> {
 
 /// Deletes cached months that are no longer needed: other zones' files at once, and last month
 /// once Subuh on the 1st has passed (until then its Isyak is still the last prayer). Keeps the
-/// zone's this and next month, and anything that is not a prayer cache.
+/// zone's this and next month, prayer-fired.json and anything else that is not a month cache.
 pub fn prune(dir: &Path, zone: &str, days: &[Day], now: DateTime<Utc>) {
     let d = now.with_timezone(&Kuala_Lumpur).date_naive();
     let mut keep = vec![d, d.checked_add_months(chrono::Months::new(1)).unwrap_or(d)];
@@ -143,8 +143,14 @@ pub fn prune(dir: &Path, zone: &str, days: &[Day], now: DateTime<Utc>) {
     let keep: Vec<_> = keep.iter().map(|k| cache_path(dir, zone, (k.year(), k.month()))).collect();
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for path in entries.flatten().map(|e| e.path()) {
+        // Only month caches, `prayer-<ZONE>-YYYY-MM.json`; never prayer-fired.json.
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if name.starts_with("prayer-") && name.ends_with(".json") && !keep.contains(&path) {
+        let month_cache = name
+            .strip_prefix("prayer-")
+            .and_then(|r| r.strip_suffix(".json"))
+            .and_then(|r| r.split_once('-'))
+            .is_some_and(|(_, ym)| NaiveDate::parse_from_str(&format!("{ym}-01"), "%Y-%m-%d").is_ok());
+        if month_cache && !keep.contains(&path) {
             let _ = std::fs::remove_file(&path);
         }
     }
@@ -393,7 +399,7 @@ mod tests {
         let at = |d: u32, h: u32, m: u32| Kuala_Lumpur.with_ymd_and_hms(2026, 12, d, h, m, 0).unwrap().with_timezone(&Utc);
         let dec = parse_month(r#"{"status":"OK!","prayerTime":[{"date":"01-Dis-2026","fajr":"05:52:00","dhuhr":"13:05:00","asr":"16:27:00","maghrib":"19:02:00","isha":"20:16:00"}]}"#).unwrap();
         let names = ["prayer-SGR01-2026-11.json", "prayer-SGR01-2026-12.json", "prayer-SGR01-2027-01.json",
-            "prayer-WLY01-2026-12.json", "settings.json", "prayer-SGR01-2026-12.json.tmp"];
+            "prayer-WLY01-2026-12.json", "settings.json", "prayer-SGR01-2026-12.json.tmp", "prayer-fired.json"];
         let left = |now| {
             let _ = std::fs::remove_dir_all(&dir);
             std::fs::create_dir_all(&dir).unwrap();
@@ -406,11 +412,11 @@ mod tests {
             v
         };
         // 1 Dec before Subuh: November stays, the other zone goes.
-        assert_eq!(left(at(1, 5, 51)), ["prayer-SGR01-2026-11.json", "prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
+        assert_eq!(left(at(1, 5, 51)), ["prayer-SGR01-2026-11.json", "prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "prayer-fired.json", "settings.json"]);
         // From Subuh on 1 Dec: November goes too.
-        assert_eq!(left(at(1, 5, 52)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
+        assert_eq!(left(at(1, 5, 52)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "prayer-fired.json", "settings.json"]);
         // Later days never keep last month.
-        assert_eq!(left(at(2, 4, 0)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "settings.json"]);
+        assert_eq!(left(at(2, 4, 0)), ["prayer-SGR01-2026-12.json", "prayer-SGR01-2026-12.json.tmp", "prayer-SGR01-2027-01.json", "prayer-fired.json", "settings.json"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
