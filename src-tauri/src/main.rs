@@ -308,7 +308,11 @@ async fn set_task_alerts(app: AppHandle, on: bool) -> Result<hooks::TaskAlerts, 
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let (s, source) = state.snapshot();
-        hooks::set(source.as_ref(), s.start_wsl, on, &state.events_dir(), &SystemRunner)
+        let result = hooks::set(source.as_ref(), s.start_wsl, on, &state.events_dir(), &SystemRunner);
+        if result.is_ok() {
+            let _ = app.emit("settings-changed", ()); // the notch's sessions hint follows the switch
+        }
+        result
     })
     .await
     .map_err(|e| e.to_string())?

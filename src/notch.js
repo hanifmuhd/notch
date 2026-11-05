@@ -402,6 +402,7 @@ async function followSettings() {
   const s = await call('get_settings');
   if (!s) return; // not loaded yet, or the call failed; keep what is shown
   soundSettings = s;
+  tasksOn = null; // the window may have switched Task alerts; read it again when the panel opens
   notch.dataset.align = s.position; // the window sits at that edge; the shape follows
   reportHits();
 }
@@ -409,7 +410,7 @@ async function followSettings() {
 // ---------- sound: bells and the azan, one at a time; the prayer sound wins ----------
 
 let soundSettings = null; // the settings the sounds follow (bell, needs_sound, prayer_sound)
-let playing = null; // { audio, kind } while a sound plays
+let playing = null; // { audio, url, kind } from the moment an alert claims the speaker
 let seenAttention = null; // sessions needing you at the last view; a rise plays the needs-you sound
 
 /** What an alert plays: 'azan', 'needs-file', 'bell' or null. `timePlaying`: a prayer-time sound is on. */
@@ -423,7 +424,8 @@ function pickSound(kind, s, timePlaying) {
 
 function stopSound() {
   if (!playing) return;
-  playing.audio.pause();
+  if (playing.audio) playing.audio.pause();
+  if (playing.url) URL.revokeObjectURL(playing.url); // an own file can be 10 MB; free it
   playing = null;
 }
 
@@ -431,21 +433,27 @@ async function playAlert(kind) {
   const pick = pickSound(kind, soundSettings, !!playing && playing.kind === 'time');
   if (!pick) return;
   stopSound();
+  // Claim the speaker before reading the file, so an alert or an open during the read sees it.
+  const me = { audio: null, url: null, kind };
+  playing = me;
   const bell = `sounds/${soundSettings.bell}.ogg`;
   let src = bell;
   if (pick !== 'bell') {
     const bytes = await invoke('read_sound', { kind: pick === 'azan' ? 'azan' : 'needs' }).catch(() => null);
-    if (bytes) src = URL.createObjectURL(new Blob([bytes]));
+    if (playing !== me) return; // stopped or replaced while the file was read
+    if (bytes) src = me.url = URL.createObjectURL(new Blob([bytes]));
   }
   const start = (url) => {
-    const audio = new Audio(url);
-    playing = { audio, kind };
-    audio.addEventListener('ended', () => { if (playing && playing.audio === audio) playing = null; });
-    return audio.play();
+    me.audio = new Audio(url);
+    me.audio.addEventListener('ended', () => { if (playing === me) stopSound(); });
+    return me.audio.play();
   };
   start(src).catch((e) => {
     console.error('sound', e);
-    if (src !== bell) start(bell).catch(() => {}); // an unplayable own file falls back to the bell, once
+    if (playing !== me || src === bell) return;
+    URL.revokeObjectURL(me.url); // an unplayable own file falls back to the bell, once
+    me.url = null;
+    start(bell).catch(() => {});
   });
 }
 

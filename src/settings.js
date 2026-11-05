@@ -134,6 +134,7 @@ const SOUND_KEY = { needs: 'needs_sound', azan: 'prayer_sound' };
 const MAX_BYTES = 10 * 1024 * 1024;
 let files = { needs: null, azan: null }; // the stored file names
 let preview = null;
+let previewUrl = null;
 
 function renderSounds() {
   for (const box of document.querySelectorAll('.sound')) {
@@ -152,9 +153,11 @@ function soundError(kind, text) {
 
 async function play(kind) {
   if (preview) preview.pause();
+  if (previewUrl) URL.revokeObjectURL(previewUrl);
+  previewUrl = null;
   const choice = kind === 'bell' ? 'bell' : settings[SOUND_KEY[kind]];
   let src = `sounds/${settings.bell}.ogg`;
-  if (choice === 'file' && files[kind]) src = URL.createObjectURL(new Blob([await invoke('read_sound', { kind })]));
+  if (choice === 'file' && files[kind]) src = previewUrl = URL.createObjectURL(new Blob([await invoke('read_sound', { kind })]));
   preview = new Audio(src);
   preview.play().catch((e) => { if (kind !== 'bell') soundError(kind, 'This file cannot be played. Choose another one.'); console.error(e); });
 }
