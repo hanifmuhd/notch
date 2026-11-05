@@ -242,9 +242,15 @@ let ageTimer;
 // spring in notch.css animates width and height together.
 function fitPanel() {
   notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
-  // Never taller than the window; the content scrolls instead (e.g. settings with a WSL source).
+  // Never taller than the window. On the usage view only the session list scrolls; the rest
+  // (e.g. settings with a WSL source) scrolls as a whole.
   const room = innerHeight - ((notch.dataset.mode || 'top') === 'top' ? 4 : 12);
-  notch.style.setProperty('--panel-h', Math.min($('#panel-inner').scrollHeight, room) + 'px');
+  const inner = $('#panel-inner');
+  const list = $('#session-list');
+  list.style.maxHeight = '';
+  const over = inner.scrollHeight - room;
+  if (over > 0 && !views.usage.hidden) list.style.maxHeight = Math.max(list.scrollHeight - over, 24) + 'px';
+  notch.style.setProperty('--panel-h', Math.min(inner.scrollHeight, room) + 'px');
 }
 
 // The window is a fixed size; only the visible shape takes the mouse (spec 4, approach A).

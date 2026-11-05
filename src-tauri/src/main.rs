@@ -38,7 +38,7 @@ const REFRESH_EVERY: Duration = Duration::from_secs(300);
 const REFRESH_CHECK: Duration = Duration::from_secs(15);
 /// The notch window never resizes (spec 4, approach A): room for the open panel, the pod and
 /// the glow. CSS animates the shape inside; the pointer loop passes clicks through elsewhere.
-const WINDOW: (f64, f64) = (860.0, 480.0);
+const WINDOW: (f64, f64) = (860.0, 560.0);
 const MONITOR_POLL: Duration = Duration::from_secs(2);
 const EVENTS_POLL: Duration = Duration::from_secs(1);
 
