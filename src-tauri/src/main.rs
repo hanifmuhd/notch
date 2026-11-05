@@ -15,6 +15,7 @@ mod settings;
 mod source;
 mod taskbar;
 mod tray;
+mod update;
 mod usage;
 mod view;
 
@@ -364,6 +365,19 @@ fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
 #[tauri::command]
 async fn list_distros() -> Vec<String> {
     tauri::async_runtime::spawn_blocking(|| source::list_distros(&SystemRunner)).await.unwrap_or_default()
+}
+
+/// The newer version on GitHub, if any; the page asks on start and every 6 hours.
+#[tauri::command]
+async fn check_update() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.ok().flatten()
+}
+
+#[tauri::command]
+async fn install_update() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| update::install(&SystemRunner, &std::env::temp_dir()))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// Opens the Claude Code install guide in the default browser.
@@ -745,6 +759,8 @@ fn main() {
             list_screens,
             set_hit_rects,
             get_zones,
+            check_update,
+            install_update,
             focus_previous,
             list_distros,
             open_install_page,

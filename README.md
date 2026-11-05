@@ -29,6 +29,7 @@ It downloads the newest installer, installs it quietly and starts the notch.
 - Rest the pointer on the notch for a moment, or click it, or press Enter, to open the panel; it grows out of the notch. Esc closes it. Moving past the notch on the way to your browser tabs does not open it.
 - The panel shows the rings large, one line per limit with its reset time, and "Runs out around" when you are using Claude faster than the clock.
 - The gear opens settings. The refresh button updates now; it also updates by itself every 5 minutes.
+- When a newer version is out, the panel shows **Update to 1.4.0** (or whichever version) at the top. Click it and the notch downloads the new version, installs it and starts again by itself, with your settings kept.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
 - With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The notch shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
@@ -68,6 +69,8 @@ The app runs `claude -p --settings '{"disableAllHooks":true}' --output-format js
 Task alerts use Claude Code's own hooks. Each hook copies the whole event Claude Code hands it into a file in the app's folder on your PC. That copy can include your prompt, Claude's last reply, or the command or file it asked permission for. The app reads each file and deletes it within about a second; files written while the app is closed are deleted at its next start (after a day at most). Nothing is sent anywhere.
 
 Prayer times, when on, download your zone's times for this month from JAKIM's e-solat (`www.e-solat.gov.my`) with Windows' own `curl.exe`, and next month's on the last day of the month, so they are in before Maghrib. It also downloads when you change zone. Only the zone code and the month's first and last dates are sent. The times are kept beside the settings file.
+
+To look for updates, the notch asks GitHub (`api.github.com`) for the newest release when it starts and every 6 hours, with Windows' own `curl.exe`. Nothing about you is sent. Clicking **Update** downloads the installer from the project's GitHub releases page.
 
 ## Uninstall
 
@@ -166,3 +169,8 @@ Tick each step after you try it on your own PC. Write down anything that fails b
 39. [ ] Choose Show in: Taskbar and wait for the next alert. The capsule shows the short form, for example "Maghrib · 18:58", without cutting it off.
 40. [ ] Change the zone. The panel's place and times change to the new zone.
 41. [ ] Turn off Wi-Fi, delete the `prayer-*.json` files in the app's folder and restart. The panel says "Prayer times unavailable — will retry"; turn Wi-Fi back on and the times appear within an hour.
+
+### Updates (v1.4)
+
+42. [ ] With 1.4.0 installed and a newer release on GitHub, open the panel within 6 hours of the release. It shows "Update to <version>"; click it. The notch closes, comes back within a minute without the Update line, Windows Settings → Apps lists the new version, and your settings are the same.
+43. [ ] With six or more sessions listed, open the panel. Only the session list scrolls; the rings, prayer times and the footer stay in view.

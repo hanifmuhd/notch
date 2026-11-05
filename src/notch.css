@@ -192,6 +192,7 @@ button { font: inherit; color: inherit; }
 .notice { margin: 0 0 6px; font-size: 13px; }
 .link-btn { padding: 4px 0; background: none; border: 0; text-align: left; cursor: pointer; text-decoration: underline 1px var(--week); text-underline-offset: 4px; }
 .link-btn:hover { color: var(--week); }
+.link-btn:disabled { cursor: default; text-decoration: none; color: var(--ink-muted); }
 .link-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 
 /* ---------- the pod: a session that is working or needs you (spec 5.4) ---------- */

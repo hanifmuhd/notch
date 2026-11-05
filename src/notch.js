@@ -357,6 +357,32 @@ $('#close-settings').addEventListener('click', () => showView('usage', $('#open-
 $('#refresh').addEventListener('click', () => call('refresh_now'));
 $('#install').addEventListener('click', () => call('open_install_page'));
 
+// ---------- update ----------
+
+const updateBtn = $('#update-btn');
+let updateTo = null;
+async function checkUpdate() {
+  if (updateBtn.disabled) return; // already installing
+  updateTo = await invoke('check_update').catch(() => null);
+  if (updateTo) updateBtn.textContent = `Update to ${updateTo}`;
+  $('#update').hidden = !updateTo;
+  fitPanel();
+}
+updateBtn.addEventListener('click', async () => {
+  updateBtn.disabled = true;
+  updateBtn.textContent = `Downloading ${updateTo}…`;
+  try {
+    await invoke('install_update'); // the installer then closes the notch and starts the new one
+    updateBtn.textContent = `Installing ${updateTo}…`;
+  } catch (e) {
+    console.error('install_update', e);
+    updateBtn.disabled = false;
+    updateBtn.textContent = 'Update failed. Try again';
+  }
+});
+checkUpdate();
+setInterval(checkUpdate, 6 * 60 * 60 * 1000);
+
 // ---------- settings ----------
 
 let settings = null;
