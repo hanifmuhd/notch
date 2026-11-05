@@ -95,82 +95,82 @@ gh release create v1.3.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.3.0"
 
 ## Acceptance checklist
 
-Tick each step after you try it on your own PC. Write down anything that fails before you release.
+Try each step on your own PC before a release, and write down anything that fails.
 
 ### Look and window
 
-1. [ ] Install and start it. You see a black notch joined to the top of your screen, its sides curving into the edge, with the double ring, your session % and the countdown.
-2. [ ] The notch stays above other windows and has no taskbar entry. The installer, tray and notifications show the ring icon.
+1. Install and start it. You see a black notch joined to the top of your screen, its sides curving into the edge, with the double ring, your session % and the countdown.
+2. The notch stays above other windows and has no taskbar entry. The installer, tray and notifications show the ring icon.
 
 ### Panel and click-through
 
-3. [ ] Rest the pointer on the notch. After a moment the panel grows out of it with a small bounce. Move away and it closes. Sweep the pointer quickly across the notch: it does not open.
-4. [ ] Click on the screen just beside the notch, and below it where the open panel would be. The click reaches the app underneath.
-5. [ ] Open the panel, open a settings drop-down, then click another app. The pinned panel closes.
-6. [ ] With no Claude Code available, click "Install Claude Code to see your limits". The Claude Code setup page opens in your browser.
+3. Rest the pointer on the notch. After a moment the panel grows out of it with a small bounce. Move away and it closes. Sweep the pointer quickly across the notch: it does not open.
+4. Click on the screen just beside the notch, and below it where the open panel would be. The click reaches the app underneath.
+5. Open the panel, open a settings drop-down, then click another app. The pinned panel closes.
+6. With no Claude Code available, click "Install Claude Code to see your limits". The Claude Code setup page opens in your browser.
 
 ### Cold start timing
 
-7. [ ] In Windows PowerShell, run `wsl --shutdown`, then right away:
+7. In Windows PowerShell, run `wsl --shutdown`, then right away:
    `Measure-Command { cmd /c 'wsl.exe -d Ubuntu -- bash -lc "claude -p --output-format json /usage" < NUL' }`
    Write the time in `docs/spikes/usage-output.md` under "Cold timing".
 
 ### Screens and position
 
-8. [ ] With two monitors, set "Show on" to each screen in turn. The notch moves there. Check the screen numbers against Settings, System, Display, Identify.
-9. [ ] On each screen, try Left, Centre and Right. The notch lands at the left edge, middle, and right with a gap for the window buttons.
-10. [ ] Unplug the screen you chose. The notch moves to your main screen.
-11. [ ] On a screen with scaling above 100 percent, the notch and its gaps scale and nothing is cut off.
+8. With two monitors, set "Show on" to each screen in turn. The notch moves there. Check the screen numbers against Settings, System, Display, Identify.
+9. On each screen, try Left, Centre and Right. The notch lands at the left edge, middle, and right with a gap for the window buttons.
+10. Unplug the screen you chose. The notch moves to your main screen.
+11. On a screen with scaling above 100 percent, the notch and its gaps scale and nothing is cut off.
 
 ### Full screen
 
-12. [ ] Run `cargo run --example fullscreen_probe` as written in `docs/spikes/fullscreen.md` and fill in the Observed column: F11 in a browser, YouTube full screen, a game, a maximised window, and the desktop.
-13. [ ] Full screen on the notch's screen (F11, YouTube full screen, a game) hides the notch. Leaving it shows the notch again.
-14. [ ] A maximised window does not hide the notch.
-15. [ ] Full screen on the other screen does not hide the notch.
+12. Run `cargo run --example fullscreen_probe` as written in `docs/spikes/fullscreen.md` and fill in the Observed column: F11 in a browser, YouTube full screen, a game, a maximised window, and the desktop.
+13. Full screen on the notch's screen (F11, YouTube full screen, a game) hides the notch. Leaving it shows the notch again.
+14. A maximised window does not hide the notch.
+15. Full screen on the other screen does not hide the notch.
 
 ### Alerts and tray
 
-16. [ ] In settings, lower a threshold below your current usage. You get exactly one Windows notification, and the value turns amber.
-17. [ ] Right-click the tray icon. You see Hide notch, Start with Windows, Refresh now and Quit. Hide notch hides the notch and the item becomes Show notch.
-18. [ ] Turn on Start with Windows, sign out and back in. The notch is there and the item is still ticked.
-19. [ ] Quit from the tray closes the app.
+16. In settings, lower a threshold below your current usage. You get exactly one Windows notification, and the value turns amber.
+17. Right-click the tray icon. You see Hide notch, Start with Windows, Refresh now and Quit. Hide notch hides the notch and the item becomes Show notch.
+18. Turn on Start with Windows, sign out and back in. The notch is there and the item is still ticked.
+19. Quit from the tray closes the app.
 
 ### Idle session
 
-20. [ ] After at least 5 hours with no Claude Code use (for example first thing in the morning), run the `/usage` command from step 7 once and save the output. If the session line has no `resets …` part, tell Claude so the parser can accept it.
+20. After at least 5 hours with no Claude Code use (for example first thing in the morning), run the `/usage` command from step 7 once and save the output. If the session line has no `resets …` part, tell Claude so the parser can accept it.
 
 ### Task alerts and follow-ups (v1.1)
 
-21. [ ] Turn on **Show when Claude needs you**. Claude Code's `settings.json` now has five entries containing `claude-notch`, your other hooks are unchanged, and `settings.json.notch-backup` exists.
-22. [ ] In a WSL terminal, ask Claude something that needs permission (for example to create a file). You get a "Claude needs you" notification, the notch shows "<project> needs you" for a few seconds, then a bell with 1.
-23. [ ] Ask something that takes over a minute. When it finishes you get "Claude finished". A quick reply only adds a quiet row in the panel.
-24. [ ] Open and close the panel. Finished rows are gone; "needs you" rows stay until you answer in that terminal.
-25. [ ] The 5-minute usage refresh never adds a "finished" row.
-26. [ ] Turn the switch off. The `claude-notch` entries are gone and the rest of the file is unchanged.
-27. [ ] Lower a threshold below your usage (one notification), then quit and restart the app. No second notification.
-28. [ ] **Show on** lists your monitor by name (for example "MSI MP252 (main)").
-29. [ ] If you have Claude Code on Windows (not WSL), choose it as the source and check the numbers still load. This checks the Windows command quoting, which could not be tested here.
-30. [ ] Log out of Claude Code, refresh. The notch says "Log in to Claude Code" and hides the numbers. Log back in.
+21. Turn on **Show when Claude needs you**. Claude Code's `settings.json` now has five entries containing `claude-notch`, your other hooks are unchanged, and `settings.json.notch-backup` exists.
+22. In a WSL terminal, ask Claude something that needs permission (for example to create a file). You get a "Claude needs you" notification, the notch shows "<project> needs you" for a few seconds, then a bell with 1.
+23. Ask something that takes over a minute. When it finishes you get "Claude finished". A quick reply only adds a quiet row in the panel.
+24. Open and close the panel. Finished rows are gone; "needs you" rows stay until you answer in that terminal.
+25. The 5-minute usage refresh never adds a "finished" row.
+26. Turn the switch off. The `claude-notch` entries are gone and the rest of the file is unchanged.
+27. Lower a threshold below your usage (one notification), then quit and restart the app. No second notification.
+28. **Show on** lists your monitor by name (for example "MSI MP252 (main)").
+29. If you have Claude Code on Windows (not WSL), choose it as the source and check the numbers still load. This checks the Windows command quoting, which could not be tested here.
+30. Log out of Claude Code, refresh. The notch says "Log in to Claude Code" and hides the numbers. Log back in.
 
 ### Redesign (v1.2)
 
-31. [ ] Turn off "Animation effects" in Windows (Settings, Accessibility, Visual effects). The panel opens without the bounce or blur, and the needs-you glow becomes a still amber outline.
-32. [ ] With Task alerts on, start a Claude Code reply in a WSL terminal. A pod shows "<project> working" beside the notch with a timer. When Claude asks permission it turns amber with a bell and the notch glows; approve it and the amber goes away within a few seconds.
-33. [ ] Press Esc in the middle of a Claude reply. The pod disappears within 10 minutes.
-34. [ ] Choose Show in: Taskbar. The capsule sits just left of the tray and opens upward. Open many apps until the taskbar is crowded: it shrinks to the rings, then moves to the top when there is no room; close apps and it comes back.
-35. [ ] In Taskbar mode, click an empty part of the taskbar. The capsule stays visible.
-36. [ ] In Top mode, turn on Stay behind windows and maximise a window. The window covers the notch; turn it off and the notch is on top again.
+31. Turn off "Animation effects" in Windows (Settings, Accessibility, Visual effects). The panel opens without the bounce or blur, and the needs-you glow becomes a still amber outline.
+32. With Task alerts on, start a Claude Code reply in a WSL terminal. A pod shows "<project> working" beside the notch with a timer. When Claude asks permission it turns amber with a bell and the notch glows; approve it and the amber goes away within a few seconds.
+33. Press Esc in the middle of a Claude reply. The pod disappears within 10 minutes.
+34. Choose Show in: Taskbar. The capsule sits just left of the tray and opens upward. Open many apps until the taskbar is crowded: it shrinks to the rings, then moves to the top when there is no room; close apps and it comes back.
+35. In Taskbar mode, click an empty part of the taskbar. The capsule stays visible.
+36. In Top mode, turn on Stay behind windows and maximise a window. The window covers the notch; turn it off and the notch is on top again.
 
 ### Prayer times (v1.3)
 
-37. [ ] Turn on Prayer times with zone WLY01. The panel shows "Prayer · Kuala Lumpur, Putrajaya" and today's five times match e-solat.gov.my for that zone.
-38. [ ] Wait for a reminder (or a prayer time) with the notch closed. The notch shows the moon and the banner line, and one Windows notification arrives. Quit and restart within the minute: no second notification.
-39. [ ] Choose Show in: Taskbar and wait for the next alert. The capsule shows the short form, for example "Maghrib · 18:58", without cutting it off.
-40. [ ] Change the zone. The panel's place and times change to the new zone.
-41. [ ] Turn off Wi-Fi, delete the `prayer-*.json` files in the app's folder and restart. The panel says "Prayer times unavailable — will retry"; turn Wi-Fi back on and the times appear within an hour.
+37. Turn on Prayer times with zone WLY01. The panel shows "Prayer · Kuala Lumpur, Putrajaya" and today's five times match e-solat.gov.my for that zone.
+38. Wait for a reminder (or a prayer time) with the notch closed. The notch shows the moon and the banner line, and one Windows notification arrives. Quit and restart within the minute: no second notification.
+39. Choose Show in: Taskbar and wait for the next alert. The capsule shows the short form, for example "Maghrib · 18:58", without cutting it off.
+40. Change the zone. The panel's place and times change to the new zone.
+41. Turn off Wi-Fi, delete the `prayer-*.json` files in the app's folder and restart. The panel says "Prayer times unavailable — will retry"; turn Wi-Fi back on and the times appear within an hour.
 
 ### Updates (v1.4)
 
-42. [ ] With 1.4.0 installed and a newer release on GitHub, open the panel within 6 hours of the release. It shows "Update to <version>"; click it. The notch closes, comes back within a minute without the Update line, Windows Settings → Apps lists the new version, and your settings are the same.
-43. [ ] With six or more sessions listed, open the panel. Only the session list scrolls; the rings, prayer times and the footer stay in view.
+42. With 1.4.0 installed and a newer release on GitHub, open the panel within 6 hours of the release. It shows "Update to <version>"; click it. The notch closes, comes back within a minute without the Update line, Windows Settings → Apps lists the new version, and your settings are the same.
+43. With six or more sessions listed, open the panel. Only the session list scrolls; the rings, prayer times and the footer stay in view.
