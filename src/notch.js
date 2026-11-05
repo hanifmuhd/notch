@@ -251,13 +251,13 @@ function contentH() {
 
 function fitPanel() {
   notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
-  // Never taller than the window. On the usage view only the session list scrolls; the rest
-  // (e.g. settings with a WSL source) scrolls as a whole.
+  // Never taller than the window. Only the session list, or the settings between their header
+  // and version row, scrolls; the rest of the view stays in place.
   const room = innerHeight - ((notch.dataset.mode || 'top') === 'top' ? 4 : 12);
-  const list = $('#session-list');
-  list.style.maxHeight = '';
+  const scroller = views.usage.hidden ? $('#settings-body') : $('#session-list');
+  scroller.style.maxHeight = '';
   const over = contentH() - room;
-  if (over > 0 && !views.usage.hidden) list.style.maxHeight = Math.max(list.scrollHeight - over, 24) + 'px';
+  if (over > 0) scroller.style.maxHeight = Math.max(scroller.scrollHeight - over, 24) + 'px';
   notch.style.setProperty('--panel-h', Math.min(contentH(), room) + 'px');
 }
 

@@ -272,6 +272,11 @@ button { font: inherit; color: inherit; }
 .range:focus-visible { outline: none; }
 .range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
 .setting__hint { margin: 0; font-size: 12px; color: var(--ink-muted); text-wrap: pretty; }
+/* Header and version stay put; only the settings between them scroll. The 2px inset keeps
+   focus rings inside the scroll box; the always-kept 10px scrollbar gutter plus 4px sits in
+   the panel's right padding, so controls line up with the footer either way. */
+.settings__body { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #ffffff3d transparent; scrollbar-gutter: stable;
+  margin: -2px -14px -2px -2px; padding: 2px 4px 2px 2px; }
 .setting__version { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
 .setting__version .link-btn { font-size: 12.5px; }
 
