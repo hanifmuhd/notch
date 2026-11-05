@@ -1,0 +1,28 @@
+/* Shared by the notch and the settings window: the font and the colour tokens. */
+
+@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500 700; font-display: block; src: url("fonts/Manrope-var.woff2") format("woff2"); }
+
+:root {
+  /* primitive */
+  --black: #000;
+  --cream: #f3f1ee;
+  --blue: #9fb8ff;
+  --amber: #f0a541;
+  --red: #ff6b6b;
+  --track: #ffffff24;
+  --line: #ffffff17;
+  --hover: #ffffff14;
+
+  /* semantic */
+  --surface: var(--black);
+  --ink: var(--cream);
+  --ink-muted: #f3f1eebf;
+  --ink-faint: #f3f1ee80; /* past prayers; 4.8:1 on black */
+  --session: var(--cream);
+  --week: var(--blue);
+  --alert: var(--amber);
+  --danger: var(--red);
+  --focus: var(--blue);
+  --font: "Manrope", "Segoe UI", system-ui, sans-serif;
+  color-scheme: dark;
+}

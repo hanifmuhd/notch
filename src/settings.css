@@ -1,0 +1,67 @@
+/* Claude Notch settings window: the notch's black and cream, groups on the left, the chosen
+   group's settings on the right. Blue marks focus and switched-on controls only. */
+
+:root { --out: cubic-bezier(.2, .9, .1, 1); }
+
+html, body { margin: 0; height: 100%; }
+body { background: var(--surface); color: var(--ink); font: 13px/1.45 var(--font); font-variant-numeric: tabular-nums; }
+button { font: inherit; color: inherit; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+.app { display: grid; grid-template-columns: 172px 1fr; height: 100%; }
+.nav { display: flex; flex-direction: column; gap: 2px; padding: 20px 12px 16px; border-right: 1px solid var(--line); }
+.nav__item { padding: 9px 12px; background: none; border: 0; border-radius: 8px; text-align: left; font-weight: 600; color: var(--ink-muted); cursor: pointer;
+  transition: color 150ms var(--out), background-color 150ms var(--out); }
+.nav__item:hover { color: var(--ink); background: var(--hover); }
+.nav__item[aria-current="page"] { color: var(--ink); background: var(--hover); font-weight: 700; }
+.nav__item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.nav__note { margin: auto 0 0; padding: 0 12px; font-size: 12px; color: var(--ink-muted); text-wrap: pretty; }
+
+.pane { overflow-y: auto; padding: 22px 32px 28px; scrollbar-width: thin; scrollbar-color: #ffffff3d transparent; }
+.group { max-width: 440px; }
+.group[hidden] { display: none; }
+.group h1 { margin: 0 0 14px; font-size: 20px; font-weight: 700; }
+.group > * + * { margin-top: 8px; }
+.group > .setting__hint { margin-top: 10px; }
+
+.link-btn { padding: 4px 0; background: none; border: 0; text-align: left; cursor: pointer; text-decoration: underline 1px var(--week); text-underline-offset: 4px; }
+.link-btn:hover { color: var(--week); }
+.link-btn:disabled { cursor: default; text-decoration: none; color: var(--ink-muted); }
+.link-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+.select--wide { max-width: 70%; }
+
+.setting + .setting { margin-top: 12px; }
+.setting__head { display: flex; justify-content: space-between; align-items: baseline; }
+.setting__head label, .setting__row > label, .setting__row > span:first-child, .setting__group { font-size: 13px; color: var(--ink-muted); }
+.setting__group { display: block; }
+.setting__row { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 32px; }
+.setting__value { font-size: 18px; font-weight: 700; }
+.select {
+  min-width: 0; max-width: 60%; height: 32px; padding: 0 8px;
+  background: var(--hover); color: var(--ink); border: 0; border-radius: 8px; font-size: 13px; cursor: pointer;
+}
+.select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The open list is drawn by Windows on white unless the options carry their own colours. */
+.select option, .select optgroup { background: var(--surface); color: var(--ink); }
+.segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
+.segmented label { position: relative; cursor: pointer; }
+.segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.segmented span { display: block; padding: 7px 9px; font-size: 13px; line-height: 1; color: var(--ink-muted); border-radius: 7px;
+  transition: color 150ms var(--out), background-color 150ms var(--out); }
+.segmented label:hover span { color: var(--ink); }
+.segmented input:checked + span { color: var(--black); background: var(--cream); font-weight: 700; }
+.segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
+.check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; cursor: pointer; }
+.check[hidden], .setting[hidden], .setting__row[hidden] { display: none; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--week); cursor: pointer; }
+.check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.range { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 30px; margin: 0; background: transparent; cursor: pointer; }
+.range::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 3px; }
+.range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; background: var(--cream); border: 0; border-radius: 50%; }
+.range:focus-visible { outline: none; }
+.range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
+.setting__hint { margin: 0; font-size: 12px; color: var(--ink-muted); text-wrap: pretty; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nav__item, .segmented span { transition: none; }
+}

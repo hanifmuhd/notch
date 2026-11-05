@@ -4,31 +4,7 @@
  * needs you; red = full. No glass. The glow breathes only while a session needs you (owner's
  * choice) and is a still outline when motion is reduced. */
 
-@font-face { font-family: "Manrope"; font-style: normal; font-weight: 500 700; font-display: block; src: url("fonts/Manrope-var.woff2") format("woff2"); }
-
 :root {
-  /* primitive */
-  --black: #000;
-  --cream: #f3f1ee;
-  --blue: #9fb8ff;
-  --amber: #f0a541;
-  --red: #ff6b6b;
-  --track: #ffffff24;
-  --line: #ffffff17;
-  --hover: #ffffff14;
-
-  /* semantic */
-  --surface: var(--black);
-  --ink: var(--cream);
-  --ink-muted: #f3f1eebf;
-  --ink-faint: #f3f1ee80; /* past prayers; 4.8:1 on black */
-  --session: var(--cream);
-  --week: var(--blue);
-  --alert: var(--amber);
-  --danger: var(--red);
-  --focus: var(--blue);
-  --font: "Manrope", "Segoe UI", system-ui, sans-serif;
-
   /* component */
   --shoulder: 14px;
   --closed-h: 32px;
@@ -38,7 +14,6 @@
   --spring: cubic-bezier(.34, 1.4, .55, 1);
   --out: cubic-bezier(.2, .9, .1, 1);
   --morph: 500ms;
-  color-scheme: dark;
 }
 
 html, body { margin: 0; height: 100%; overflow: hidden; background: transparent; }
@@ -239,48 +214,7 @@ button { font: inherit; color: inherit; }
 .notch[data-mode="taskbar_mini"] .pill { padding: 0 6px; gap: 0; }
 .notch[data-mode="taskbar_mini"] .ear__pct, .notch[data-mode="taskbar_mini"] .ear--right { display: none; }
 
-/* ---------- settings view (inside the same panel) ---------- */
 
-.settings__head { display: flex; align-items: center; gap: 4px; margin: -6px 0 8px -10px; }
-.settings__title { font-size: 15px; font-weight: 700; }
-.setting + .setting { margin-top: 12px; }
-.setting__head { display: flex; justify-content: space-between; align-items: baseline; }
-.setting__head label, .setting__row > label, .setting__row > span:first-child, .setting__group { font-size: 12.5px; color: var(--ink-muted); }
-.setting__group { display: block; }
-.setting__row { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 32px; }
-.setting__value { font-size: 18px; font-weight: 700; }
-.select {
-  min-width: 0; max-width: 60%; height: 32px; padding: 0 8px;
-  background: var(--hover); color: var(--ink); border: 0; border-radius: 8px; font-size: 12.5px; cursor: pointer;
-}
-.select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-/* The open list is drawn by Windows on white unless the options carry their own colours. */
-.select option, .select optgroup { background: var(--surface); color: var(--ink); }
-.segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
-.segmented label { position: relative; cursor: pointer; }
-.segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
-.segmented span { display: block; padding: 7px 9px; font-size: 12.5px; line-height: 1; color: var(--ink-muted); border-radius: 7px;
-  transition: color 150ms var(--out), background-color 150ms var(--out); }
-.segmented label:hover span { color: var(--ink); }
-.segmented input:checked + span { color: var(--black); background: var(--cream); font-weight: 700; }
-.segmented input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
-.check { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 12.5px; cursor: pointer; }
-.check[hidden], .setting[hidden], .setting__row[hidden] { display: none; }
-.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--week); cursor: pointer; }
-.check input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.range { appearance: none; -webkit-appearance: none; display: block; width: 100%; height: 30px; margin: 0; background: transparent; cursor: pointer; }
-.range::-webkit-slider-runnable-track { height: 6px; background: var(--track); border-radius: 3px; }
-.range::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px; background: var(--cream); border: 0; border-radius: 50%; }
-.range:focus-visible { outline: none; }
-.range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
-.setting__hint { margin: 0; font-size: 12px; color: var(--ink-muted); text-wrap: pretty; }
-/* Header and version stay put; only the settings between them scroll. The 2px inset keeps
-   focus rings inside the scroll box; the always-kept 10px scrollbar gutter plus 4px sits in
-   the panel's right padding, so controls line up with the footer either way. */
-.settings__body { overflow-y: auto; scrollbar-width: thin; scrollbar-color: #ffffff3d transparent; scrollbar-gutter: stable;
-  margin: -2px -14px -2px -2px; padding: 2px 4px 2px 2px; }
-.setting__version { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
-.setting__version .link-btn { font-size: 12.5px; }
 
 /* ---------- reduced motion: no spring, no blur, no breathing ---------- */
 

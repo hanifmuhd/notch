@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default permissions for the notch and settings windows",
   "windows": ["notch", "settings"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "core:window:allow-close"]
 }

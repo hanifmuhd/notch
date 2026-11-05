@@ -388,6 +388,7 @@ pub fn show_settings(app: &AppHandle) -> Result<(), String> {
         .min_inner_size(560.0, 400.0)
         .center()
         .background_color(tauri::window::Color(0, 0, 0, 255))
+        .theme(Some(tauri::Theme::Dark)) // a dark title bar, like the page
         .build()
         .map(|_| ())
         .map_err(|e| e.to_string())

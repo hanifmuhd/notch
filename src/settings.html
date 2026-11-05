@@ -2,9 +2,103 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Claude Notch settings</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="settings.css">
+<script src="settings.js" defer></script>
 </head>
-<body style="background:#000;color:#f3f1ee;font-family:'Segoe UI',sans-serif">
-<p>Settings</p>
+<body>
+<div class="app">
+  <nav class="nav" aria-label="Settings groups">
+    <button class="nav__item" type="button" data-group="display" aria-current="page">Display</button>
+    <button class="nav__item" type="button" data-group="claude">Claude</button>
+    <button class="nav__item" type="button" data-group="prayer">Prayer</button>
+    <button class="nav__item" type="button" data-group="alerts">Alert levels</button>
+    <button class="nav__item" type="button" data-group="about">About</button>
+    <p class="nav__note">Changes save as you make them.</p>
+  </nav>
+
+  <main class="pane">
+    <section class="group" id="g-display" aria-labelledby="h-display">
+      <h1 id="h-display">Display</h1>
+      <div class="setting__row">
+        <span id="s-show-in-label">Show in</span>
+        <span class="segmented" role="radiogroup" aria-labelledby="s-show-in-label">
+          <label><input type="radio" name="show_in" value="top"><span>Top of screen</span></label>
+          <label><input type="radio" name="show_in" value="taskbar"><span>Taskbar</span></label>
+        </span>
+      </div>
+      <div class="setting__row" data-top-only>
+        <label for="s-screen">Show on</label>
+        <select class="select" id="s-screen"></select>
+      </div>
+      <div class="setting__row" data-top-only>
+        <span id="s-position-label">Position</span>
+        <span class="segmented" role="radiogroup" aria-labelledby="s-position-label">
+          <label><input type="radio" name="position" value="left"><span>Left</span></label>
+          <label><input type="radio" name="position" value="centre"><span>Centre</span></label>
+          <label><input type="radio" name="position" value="right"><span>Right</span></label>
+        </span>
+      </div>
+      <label class="check" data-top-only><input type="checkbox" id="s-stay-behind"><span>Stay behind windows</span></label>
+      <p class="setting__hint" id="s-taskbar-hint" hidden>In the taskbar it sits beside the clock. Screen, position and staying behind windows apply at the top of the screen.</p>
+    </section>
+
+    <section class="group" id="g-claude" aria-labelledby="h-claude" hidden>
+      <h1 id="h-claude">Claude</h1>
+      <div class="setting__row">
+        <label for="s-source">Get usage from</label>
+        <select class="select" id="s-source"></select>
+      </div>
+      <label class="check" id="s-start-wsl-row" hidden><input type="checkbox" id="s-start-wsl"><span>Start WSL if it’s stopped</span></label>
+      <div class="setting" role="group" aria-labelledby="s-tasks-label">
+        <span class="setting__group" id="s-tasks-label">Task alerts</span>
+        <label class="check"><input type="checkbox" role="switch" id="s-task-alerts" disabled><span>Show when Claude needs you</span></label>
+        <p class="setting__hint" id="s-task-hint" hidden></p>
+        <label class="check"><input type="checkbox" id="s-task-finished"><span>Also when a task finishes</span></label>
+      </div>
+    </section>
+
+    <section class="group" id="g-prayer" aria-labelledby="h-prayer" hidden>
+      <h1 id="h-prayer">Prayer</h1>
+      <label class="check"><input type="checkbox" role="switch" id="s-prayer-on"><span>Prayer times</span></label>
+      <div class="setting__row" data-prayer-only>
+        <label for="s-zone">Zone</label>
+        <select class="select select--wide" id="s-zone"></select>
+      </div>
+      <div class="setting__row" data-prayer-only>
+        <span id="s-remind-label">Remind before</span>
+        <span class="segmented" role="radiogroup" aria-labelledby="s-remind-label">
+          <label><input type="radio" name="prayer_remind" value="0"><span>Off</span></label>
+          <label><input type="radio" name="prayer_remind" value="5"><span>5m<span class="sr-only">inutes</span></span></label>
+          <label><input type="radio" name="prayer_remind" value="10"><span>10m<span class="sr-only">inutes</span></span></label>
+          <label><input type="radio" name="prayer_remind" value="15"><span>15m<span class="sr-only">inutes</span></span></label>
+        </span>
+      </div>
+    </section>
+
+    <section class="group" id="g-alerts" aria-labelledby="h-alerts" hidden>
+      <h1 id="h-alerts">Alert levels</h1>
+      <div class="setting">
+        <div class="setting__head"><label for="t-session">Session alert at</label><output class="setting__value" for="t-session" data-out="session">90%</output></div>
+        <input class="range" id="t-session" type="range" min="50" max="99" step="1" value="90" data-threshold="session">
+      </div>
+      <div class="setting">
+        <div class="setting__head"><label for="t-week">Week alert at</label><output class="setting__value" for="t-week" data-out="week">90%</output></div>
+        <input class="range" id="t-week" type="range" min="50" max="99" step="1" value="90" data-threshold="week">
+      </div>
+      <p class="setting__hint">Full always alerts at 100%.</p>
+    </section>
+
+    <section class="group" id="g-about" aria-labelledby="h-about" hidden>
+      <h1 id="h-about">About</h1>
+      <div class="setting__row">
+        <span id="s-version">Version</span>
+        <button class="link-btn" type="button" id="s-update" aria-live="polite">Check for updates</button>
+      </div>
+    </section>
+  </main>
+</div>
 </body>
 </html>

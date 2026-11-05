@@ -1,4 +1,4 @@
-// Renders the usage ViewModel from Rust (view.rs) and drives the notch, panel and settings
+// Renders the usage ViewModel from Rust (view.rs) and drives the notch and its panel
 // (redesign spec 5.1-5.4). Rust computes every text; this file draws rings and moves the shape.
 const { invoke } = window.__TAURI__.core;
 const { listen } = window.__TAURI__.event;
@@ -8,7 +8,7 @@ const notch = $('#notch');
 const pill = $('#pill');
 const panel = $('#panel');
 const pod = $('#pod');
-const views = { usage: $('[data-view="usage"]'), settings: $('[data-view="settings"]') };
+const usageView = $('[data-view="usage"]');
 const HOVER_INTENT = 300; // the pointer must rest this long before hover opens (spec 5.2)
 const CLOSE_DELAY = 150; // hover-out grace
 const MORPH = 500; // matches the size spring in notch.css
@@ -240,7 +240,6 @@ function announce(text) {
 
 let isOpen = false;
 let pinned = false;
-let menuOpen = false; // a native <select> popup is showing; it can blur the page in WebView2
 let closeTimer;
 let hoverTimer;
 let settleTimer;
@@ -249,21 +248,17 @@ let ageTimer;
 
 // The panel grows from the pill's size to its content size; both are CSS variables so the
 // spring in notch.css animates width and height together.
-// The height the shown view needs. Not scrollHeight: that never drops below the current
-// height, so the panel would stay settings-tall after going back to the usage view.
+// The height the usage view needs. Not scrollHeight: that never drops below the current height.
 function contentH() {
-  const inner = $('#panel-inner');
-  const cs = getComputedStyle(inner);
-  const view = views.usage.hidden ? views.settings : views.usage;
-  return view.offsetHeight + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+  const cs = getComputedStyle($('#panel-inner'));
+  return usageView.offsetHeight + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
 }
 
 function fitPanel() {
   notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
-  // Never taller than the window. Only the session list, or the settings between their header
-  // and version row, scrolls; the rest of the view stays in place.
+  // Never taller than the window: only the session list scrolls; the rest stays in place.
   const room = innerHeight - ((notch.dataset.mode || 'top') === 'top' ? 4 : 12);
-  const scroller = views.usage.hidden ? $('#settings-body') : $('#session-list');
+  const scroller = $('#session-list');
   scroller.style.maxHeight = '';
   const over = contentH() - room;
   if (over > 0) scroller.style.maxHeight = Math.max(scroller.scrollHeight - over, 24) + 'px';
@@ -312,7 +307,6 @@ function setOpen(open) {
   reportHits();
   settleTimer = setTimeout(() => {
     morphing = false;
-    if (!isOpen) showView('usage');
     reportHits();
   }, reduced() ? 150 : MORPH + 100);
   if (open) {
@@ -338,16 +332,9 @@ function hoverOut() {
   if (!pinned && isOpen) { clearTimeout(closeTimer); closeTimer = setTimeout(() => setOpen(false), CLOSE_DELAY); }
 }
 
-function showView(name, focusEl) {
-  for (const [k, v] of Object.entries(views)) v.hidden = k !== name;
-  fitPanel();
-  reportHits();
-  if (focusEl) focusEl.focus();
-}
-
-// Content changes (settings view, sessions) change the panel height.
+// Content changes (sessions, prayer, update link) change the panel height.
 const fitObserver = new ResizeObserver(() => { fitPanel(); reportHits(); });
-[$('#panel-inner'), views.usage, views.settings].forEach((e) => fitObserver.observe(e));
+[$('#panel-inner'), usageView].forEach((e) => fitObserver.observe(e));
 new ResizeObserver(() => { fitPanel(); reportHits(); }).observe(pill);
 new ResizeObserver(reportHits).observe(pod);
 window.addEventListener('resize', reportHits);
@@ -360,7 +347,7 @@ notch.addEventListener('mouseleave', hoverOut);
 pod.addEventListener('click', () => { pinned = true; setOpen(true); });
 // Clicking another window unpins, but not while a select's own popup takes the focus.
 window.addEventListener('blur', () => {
-  if (pinned && !menuOpen) { pinned = false; setOpen(false); }
+  if (pinned) { pinned = false; setOpen(false); }
 });
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -370,29 +357,25 @@ document.addEventListener('keydown', (e) => {
   call('focus_previous');
 });
 
-$('#open-settings').addEventListener('click', () => { showView('settings', $('#close-settings')); loadTaskAlerts(); });
-$('#close-settings').addEventListener('click', () => showView('usage', $('#open-settings')));
+$('#open-settings').addEventListener('click', () => call('open_settings'));
 $('#refresh').addEventListener('click', () => call('refresh_now'));
 $('#install').addEventListener('click', () => call('open_install_page'));
 
 // ---------- update ----------
 
-// The same update shows at the top of the panel and in settings.
-const updateBtns = [$('#update-btn'), $('#s-update')];
-const settingsUpdate = $('#s-update');
+// The settings window has its own check; this is the link at the top of the panel.
+const updateBtn = $('#update-btn');
 let updateTo = null;
 let installing = false;
-const setUpdate = (text, busy) => updateBtns.forEach((b) => { b.textContent = text; b.disabled = busy; });
-/** Asks GitHub for a newer version; throws when GitHub cannot be reached. */
-async function findUpdate() {
+const setUpdate = (text, busy) => { updateBtn.textContent = text; updateBtn.disabled = busy; };
+async function checkUpdate() {
   if (installing) return;
-  updateTo = await invoke('check_update');
-  setUpdate(updateTo ? `Update to ${updateTo}` : 'Check for updates', false);
+  updateTo = await invoke('check_update').catch(() => null); // the timed check stays quiet
+  if (updateTo) setUpdate(`Update to ${updateTo}`, false);
   $('#update').hidden = !updateTo;
   fitPanel();
 }
-const checkUpdate = () => findUpdate().catch(() => {}); // the timed check stays quiet
-async function installUpdate() {
+updateBtn.addEventListener('click', async () => {
   installing = true;
   setUpdate(`Downloading ${updateTo}…`, true);
   try {
@@ -403,165 +386,17 @@ async function installUpdate() {
     installing = false;
     setUpdate('Update failed. Try again', false);
   }
-}
-$('#update-btn').addEventListener('click', installUpdate);
-settingsUpdate.addEventListener('click', async () => {
-  if (updateTo) return installUpdate();
-  settingsUpdate.disabled = true;
-  settingsUpdate.textContent = 'Checking…';
-  try {
-    await findUpdate();
-    if (!updateTo) settingsUpdate.textContent = 'You have the newest version';
-  } catch {
-    settingsUpdate.textContent = 'Could not check. Try again';
-  }
-  settingsUpdate.disabled = false;
 });
-window.__TAURI__.app.getVersion().then((v) => { $('#s-version').textContent = `Version ${v}`; }).catch(() => {});
 checkUpdate();
 setInterval(checkUpdate, 6 * 60 * 60 * 1000);
 
-// ---------- settings ----------
+// ---------- settings: the window has them; the notch only follows the position ----------
 
-let settings = null;
-let distros = [];
-const screenSel = $('#s-screen');
-const sourceSel = $('#s-source');
-const zoneSel = $('#s-zone');
-let zones = [];
-// JAKIM zone codes start with the state's code.
-const STATES = { JHR: 'Johor', KDH: 'Kedah', KTN: 'Kelantan', MLK: 'Melaka', NGS: 'Negeri Sembilan', PHG: 'Pahang',
-  PLS: 'Perlis', PNG: 'Pulau Pinang', PRK: 'Perak', SBH: 'Sabah', SGR: 'Selangor', SWK: 'Sarawak', TRG: 'Terengganu', WLY: 'Wilayah Persekutuan' };
-const MENU_KEYS = [' ', 'Enter', 'F4'];
-
-for (const sel of [screenSel, sourceSel, zoneSel]) {
-  sel.addEventListener('pointerdown', () => { menuOpen = true; });
-  sel.addEventListener('keydown', (e) => {
-    if (MENU_KEYS.includes(e.key) || (e.altKey && e.key === 'ArrowDown')) menuOpen = true;
-    else if (e.key === 'Escape') menuOpen = false;
-  });
-  sel.addEventListener('change', () => { menuOpen = false; });
-  sel.addEventListener('blur', () => { menuOpen = false; });
-}
-
-const sourceValue = (src) => (src.kind === 'wsl' ? 'wsl:' + src.distro : src.kind);
-
-function fillSelect(sel, options, value) {
-  sel.replaceChildren(...options.map(([v, label]) => {
-    const o = el('option', null, label);
-    o.value = v;
-    return o;
-  }));
-  sel.value = value;
-}
-
-function renderSettings(screens) {
-  if (screens) {
-    const primary = screens.find((s) => s.primary) || screens[0];
-    const chosen = screens.some((s) => s.id === settings.screen) ? settings.screen : primary && primary.id;
-    fillSelect(screenSel, screens.map((s) => [s.id, s.label]), chosen);
-  }
-  const names = [...distros];
-  if (settings.source.kind === 'wsl' && !names.includes(settings.source.distro)) names.push(settings.source.distro);
-  fillSelect(sourceSel, [['auto', 'Auto'], ['windows', 'Windows'], ...names.map((d) => ['wsl:' + d, 'WSL: ' + d])], sourceValue(settings.source));
-  for (const r of document.querySelectorAll('input[name="position"]')) r.checked = r.value === settings.position;
-  notch.dataset.align = settings.position; // the window sits at that edge; the shape follows
-  for (const r of document.querySelectorAll('input[name="show_in"]')) r.checked = r.value === settings.show_in;
-  for (const row of document.querySelectorAll('[data-top-only]')) row.hidden = settings.show_in === 'taskbar';
-  $('#s-stay-behind').checked = settings.stay_behind;
+async function followSettings() {
+  const s = await call('get_settings');
+  if (!s) return; // not loaded yet, or the call failed; keep what is shown
+  notch.dataset.align = s.position; // the window sits at that edge; the shape follows
   reportHits();
-  $('#s-start-wsl').checked = settings.start_wsl;
-  $('#s-start-wsl-row').hidden = settings.source.kind !== 'wsl';
-  $('#s-task-finished').checked = settings.task_finished;
-  $('#s-prayer-on').checked = settings.prayer_on;
-  for (const row of document.querySelectorAll('[data-prayer-only]')) row.hidden = !settings.prayer_on;
-  for (const r of document.querySelectorAll('input[name="prayer_remind"]')) r.checked = Number(r.value) === settings.prayer_remind;
-  if (zones.length && zoneSel.options.length === 0) {
-    const groups = new Map();
-    for (const [code, place] of zones) {
-      const state = STATES[code.slice(0, 3)] || code.slice(0, 3);
-      if (!groups.has(state)) groups.set(state, el('optgroup'));
-      const g = groups.get(state);
-      g.label = state;
-      const o = el('option', null, `${code} · ${place}`);
-      o.value = code;
-      g.append(o);
-    }
-    zoneSel.replaceChildren(...groups.values());
-  }
-  zoneSel.value = settings.prayer_zone;
-  for (const key of ['session', 'week']) {
-    $(`#t-${key}`).value = settings[key + '_threshold'];
-    $(`[data-out="${key}"]`).textContent = settings[key + '_threshold'] + '%';
-  }
-}
-
-async function save(patch) {
-  if (!settings) return;
-  settings = { ...settings, ...patch };
-  renderSettings();
-  try {
-    await invoke('save_settings', { settings }); // the view arrives through usage-updated
-  } catch (e) {
-    console.error('save_settings', e);
-    settings = await call('get_settings') || settings;
-    renderSettings();
-  }
-}
-
-screenSel.addEventListener('change', () => save({ screen: screenSel.value }));
-for (const r of document.querySelectorAll('input[name="position"]')) {
-  r.addEventListener('change', () => save({ position: r.value }));
-}
-sourceSel.addEventListener('change', () => {
-  const v = sourceSel.value;
-  save({ source: v.startsWith('wsl:') ? { kind: 'wsl', distro: v.slice(4) } : { kind: v } });
-});
-$('#s-start-wsl').addEventListener('change', (e) => save({ start_wsl: e.target.checked }));
-$('#s-task-finished').addEventListener('change', (e) => save({ task_finished: e.target.checked }));
-$('#s-prayer-on').addEventListener('change', (e) => save({ prayer_on: e.target.checked }));
-zoneSel.addEventListener('change', () => save({ prayer_zone: zoneSel.value }));
-for (const r of document.querySelectorAll('input[name="prayer_remind"]')) {
-  r.addEventListener('change', () => save({ prayer_remind: Number(r.value) }));
-}
-$('#s-stay-behind').addEventListener('change', (e) => save({ stay_behind: e.target.checked }));
-for (const r of document.querySelectorAll('input[name="show_in"]')) {
-  r.addEventListener('change', () => save({ show_in: r.value }));
-}
-
-// ---------- task alerts switch (reads Claude's settings.json, may take seconds on WSL) ----------
-
-const taskSwitch = $('#s-task-alerts');
-const taskHint = $('#s-task-hint');
-
-function showTaskAlerts(t, error) {
-  if (t) tasksOn = !!t.on; // the panel's sessions hint follows the switch
-  taskSwitch.checked = !!(t && t.on);
-  taskSwitch.disabled = !(t && t.available);
-  const hint = error || (t && t.hint) || '';
-  taskHint.textContent = hint;
-  taskHint.hidden = !hint;
-}
-
-async function loadTaskAlerts() {
-  taskSwitch.disabled = true;
-  try { showTaskAlerts(await invoke('get_task_alerts')); } catch (e) { showTaskAlerts(null, String(e)); }
-}
-
-taskSwitch.addEventListener('change', async () => {
-  const on = taskSwitch.checked;
-  taskSwitch.disabled = true; // one edit at a time
-  try { showTaskAlerts(await invoke('set_task_alerts', { on })); } catch (e) {
-    taskSwitch.checked = !on;
-    taskSwitch.disabled = false;
-    taskHint.textContent = String(e);
-    taskHint.hidden = false;
-  }
-});
-for (const input of document.querySelectorAll('[data-threshold]')) {
-  const key = input.dataset.threshold;
-  input.addEventListener('input', () => { $(`[data-out="${key}"]`).textContent = input.value + '%'; });
-  input.addEventListener('change', () => save({ [key + '_threshold']: Number(input.value) }));
 }
 
 // ---------- start ----------
@@ -590,25 +425,12 @@ function takeFlash(vm) {
   // It also says when the pointer arrives: a cursor that stops right after input is switched on
   // never sends mouseenter.
   await listen('pointer', (e) => { if (e.payload) hoverIn(); else hoverOut(); });
-  // The tray can change show_notch; take the file's settings so the next save does not undo it.
-  await listen('settings-changed', async () => {
-    const s = await call('get_settings');
-    if (!s) return; // not loaded yet, or the call failed; keep what is shown
-    settings = s;
-    renderSettings();
-  });
+  // Any save (settings window or tray) may move the notch.
+  await listen('settings-changed', followSettings);
   const vm = await call('get_view');
   if (vm) {
     takeFlash(vm); // a prayer banner that fired before we listened
     render(vm);
   }
-  const [s, screens, z] = await Promise.all([call('get_settings'), call('list_screens'), call('get_zones')]);
-  zones = z || [];
-  if (s) {
-    settings = s;
-    renderSettings(screens || []);
-  }
-  // `wsl -l` can take seconds, so the distro list fills in afterwards.
-  distros = (await call('list_distros')) || [];
-  if (settings) renderSettings();
+  await followSettings();
 })();
