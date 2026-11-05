@@ -25,6 +25,9 @@ pub enum RunError {
     Spawn(String),
 }
 
+/// The system curl: Windows ships it as curl.exe (prayer times and updates use it).
+pub const CURL: &str = if cfg!(windows) { "curl.exe" } else { "curl" };
+
 pub trait Runner {
     fn run(&self, program: &str, args: &[&str], timeout: Duration) -> Result<String, RunError>;
 }

@@ -113,7 +113,7 @@ pub fn fetch_month(runner: &dyn Runner, zone: &str, (year, month): (i32, u32)) -
     let range = format!("datestart={first}&dateend={last}");
     let url = format!("https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=duration&zone={zone}");
     let body = runner
-        .run("curl.exe", &["-s", "-f", "-m", "30", "-A", "ClaudeNotch", "-d", &range, &url], std::time::Duration::from_secs(35))
+        .run(crate::source::CURL, &["-s", "-f", "-m", "30", "-A", "ClaudeNotch", "-d", &range, &url], std::time::Duration::from_secs(35))
         .ok()?;
     parse_month(&body).map(|_| body)
 }
@@ -368,8 +368,8 @@ mod tests {
         assert_eq!(fetch_month(&r, "WLY02", (2028, 2)).as_deref(), Some(FIXTURE));
         let calls = r.0.borrow();
         let url = "https://www.e-solat.gov.my/index.php?r=esolatApi/TakwimSolat&period=duration&zone=WLY02";
-        assert_eq!(calls[0], format!("curl.exe -s -f -m 30 -A ClaudeNotch -d datestart=2026-12-01&dateend=2026-12-31 {url}"));
-        assert_eq!(calls[1], format!("curl.exe -s -f -m 30 -A ClaudeNotch -d datestart=2028-02-01&dateend=2028-02-29 {url}"));
+        assert_eq!(calls[0], format!("{} -s -f -m 30 -A ClaudeNotch -d datestart=2026-12-01&dateend=2026-12-31 {url}", crate::source::CURL));
+        assert_eq!(calls[1], format!("{} -s -f -m 30 -A ClaudeNotch -d datestart=2028-02-01&dateend=2028-02-29 {url}", crate::source::CURL));
     }
 
     #[test]

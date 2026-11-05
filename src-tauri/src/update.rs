@@ -18,7 +18,7 @@ pub fn newer(body: &str, current: &str) -> Option<String> {
 /// Err only when GitHub cannot be reached, so "no update" is never said by mistake.
 pub fn check(runner: &dyn Runner) -> Result<Option<String>, String> {
     let body = runner
-        .run("curl.exe", &["-s", "-f", "-m", "20", "-A", "ClaudeNotch", LATEST], Duration::from_secs(25))
+        .run(crate::source::CURL, &["-s", "-f", "-m", "20", "-A", "ClaudeNotch", LATEST], Duration::from_secs(25))
         .map_err(|e| format!("could not reach GitHub: {e:?}"))?;
     Ok(newer(&body, env!("CARGO_PKG_VERSION")))
 }
@@ -29,7 +29,7 @@ pub fn install(runner: &dyn Runner, dir: &Path) -> Result<(), String> {
     let setup = dir.join("ClaudeNotch-setup.exe");
     let out = setup.to_string_lossy();
     runner
-        .run("curl.exe", &["-s", "-f", "-L", "-m", "300", "-A", "ClaudeNotch", "-o", &out, SETUP], Duration::from_secs(310))
+        .run(crate::source::CURL, &["-s", "-f", "-L", "-m", "300", "-A", "ClaudeNotch", "-o", &out, SETUP], Duration::from_secs(310))
         .map_err(|e| format!("download failed: {e:?}"))?;
     std::process::Command::new(&setup).args(["/S", "/UPDATE", "/R"]).spawn().map(|_| ()).map_err(|e| e.to_string())
 }

@@ -1,0 +1,46 @@
+# Builds the experimental macOS menu-bar app (universal: Apple Silicon + Intel).
+# On a published release it attaches ClaudeNotch-mac.zip and ClaudeNotch-mac.dmg to that release;
+# on the feature branch it only keeps them on the run, to check that the Mac build works.
+name: macOS build
+
+on:
+  push:
+    branches: [feature/macos]
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust targets
+        run: rustup target add aarch64-apple-darwin x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Build the universal app
+        working-directory: src-tauri
+        run: npx --yes @tauri-apps/cli@2 build --target universal-apple-darwin --bundles app,dmg
+      - name: Package
+        run: |
+          B=src-tauri/target/universal-apple-darwin/release/bundle
+          ditto -c -k --keepParent "$B/macos/Claude Notch.app" ClaudeNotch-mac.zip
+          cp "$B"/dmg/*.dmg ClaudeNotch-mac.dmg
+      - name: Keep the files on this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-notch-mac
+          path: ClaudeNotch-mac.*
+      - name: Attach to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" ClaudeNotch-mac.zip ClaudeNotch-mac.dmg --clobber
