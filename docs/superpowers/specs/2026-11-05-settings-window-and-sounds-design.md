@@ -100,9 +100,8 @@ the prayer sound plays. Only one sound plays at a time.
 **Stopping:** opening the notch (hover-open or click) stops whatever is playing. A plain
 pass-over that does not open the notch does not stop it.
 
-**Windows notifications** stay, but are made silent whenever the notch plays its own sound for
-that alert, so the owner never hears two sounds. If the notification plugin cannot make a
-silent toast on Windows, the builder reports it back instead of shipping double sounds.
+**Windows notifications** stay as they are: they are already silent (the notification library
+plays no sound unless one is named, and the app names none), so the owner never hears two sounds.
 
 ## Banners that stay
 
