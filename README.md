@@ -11,9 +11,17 @@ If Claude Code is not found, the notch says so and links to the install page. It
 
 ## Install
 
-1. Run `Claude Notch_0.1.0_x64-setup.exe`. It installs for your user only and needs no admin rights.
-2. Windows SmartScreen may warn that the app is unrecognised, because the installer is not signed. Choose **More info**, then **Run anyway**.
-3. The notch appears at the top of your screen when the install ends.
+Either way installs for your user only, needs no admin rights, and also updates an older version.
+
+**With one command.** Open PowerShell (Start, type `PowerShell`) and paste:
+
+```
+irm https://raw.githubusercontent.com/hanifmuhd/notch/main/install.ps1 | iex
+```
+
+It downloads the newest installer, installs it quietly and starts the notch.
+
+**With the installer.** Download `ClaudeNotch-setup.exe` from the [latest release](https://github.com/hanifmuhd/notch/releases/latest) and run it. Windows SmartScreen may warn that the app is unrecognised, because the installer is not signed. Choose **More info**, then **Run anyway**. The notch appears at the top of your screen when the install ends.
 
 ## Using it
 
@@ -74,6 +82,13 @@ powershell.exe -NoProfile -Command '$env:Path = [Environment]::GetEnvironmentVar
 ```
 
 The installer lands in `C:\Users\hanif\code\notch-target\release\bundle\nsis\`. Use `cargo test` instead of `cargo tauri build` to run the tests. Always run cargo through PowerShell, not from Linux.
+
+To release, raise `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, build, then attach the installer under the fixed name `ClaudeNotch-setup.exe`, which the install command and the download link expect:
+
+```
+cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.3.0_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
+gh release create v1.3.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.3.0" --notes "Prayer times"
+```
 
 ## Acceptance checklist
 
