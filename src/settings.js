@@ -270,6 +270,13 @@ window.__TAURI__.app.getVersion().then((v) => { $('#s-version').textContent = `V
 
 // ---------- start ----------
 
+// The experimental Mac version is a menu bar item only: display, Claude source, Task alerts and
+// sounds do not apply there yet, so only Prayer, Alert levels and About show.
+if (navigator.userAgent.includes('Mac OS X')) {
+  for (const g of ['display', 'claude', 'sounds']) $(`[data-group="${g}"]`).hidden = true;
+  showGroup('prayer');
+}
+
 (async () => {
   // The tray or the notch may save too; reload so a later save here does not undo theirs.
   await listen('settings-changed', async () => {

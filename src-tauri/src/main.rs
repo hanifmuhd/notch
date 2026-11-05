@@ -436,20 +436,40 @@ pub fn show_settings(app: &AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// The newest version found on GitHub, for the macOS menu's "Update to x.y.z".
+pub static LATEST_UPDATE: Mutex<Option<String>> = Mutex::new(None);
+
 /// The newer version on GitHub, if any; the page asks on start and every 6 hours.
 #[tauri::command]
 async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_update(&app)).await.map_err(|e| e.to_string())?
+}
+
+/// Asks GitHub, remembers the answer, and tells the owner once per new version.
+fn find_update(app: &AppHandle) -> Result<Option<String>, String> {
     static TOLD: Mutex<Option<String>> = Mutex::new(None);
-    let found = tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.map_err(|e| e.to_string())??;
+    let found = update::check(&SystemRunner)?;
+    *LATEST_UPDATE.lock().unwrap_or_else(|e| e.into_inner()) = found.clone();
     if let Some(v) = &found {
-        // One Windows notification per new version while the notch runs.
         let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
         if told.as_ref() != Some(v) {
             *told = Some(v.clone());
-            toast(&app, format!("Claude Notch {v} is ready"), "Open the notch and click Update to install it.".into());
+            let how = if cfg!(target_os = "macos") { "Click the menu bar item, then Update." } else { "Open the notch and click Update to install it." };
+            toast(app, format!("Claude Notch {v} is ready"), how.into());
+            #[cfg(target_os = "macos")]
+            emit(app, None); // the menu gains "Update to x.y.z"
         }
     }
     Ok(found)
+}
+
+/// macOS has no notch page on screen to ask; check at start and every 6 hours.
+#[cfg(target_os = "macos")]
+fn track_updates(app: AppHandle) {
+    std::thread::spawn(move || loop {
+        let _ = find_update(&app);
+        std::thread::sleep(Duration::from_secs(6 * 60 * 60));
+    });
 }
 
 #[tauri::command]
@@ -860,10 +880,23 @@ fn main() {
             if let Err(e) = std::fs::create_dir_all(app.state::<AppState>().events_dir()) {
                 eprintln!("hooks: events folder: {e}");
             }
+            #[cfg(target_os = "macos")]
+            {
+                // Experimental: a menu bar app only (no Dock icon, no notch window yet).
+                app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+                if let Some(w) = app.get_webview_window("notch") {
+                    let _ = w.hide();
+                }
+                track_updates(app.handle().clone());
+            }
             tray::build(app.handle())?;
             track_events(app.handle().clone());
-            refresh_hooks(app.handle().clone());
-            apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
+            track_prayer(app.handle().clone());
+            #[cfg(not(target_os = "macos"))]
+            {
+                refresh_hooks(app.handle().clone()); // Task alerts are not on the Mac yet
+                apply_visibility(app.handle()); // show_notch=false must not flash the notch at launch
+            }
             #[cfg(debug_assertions)]
             if std::env::var_os("NOTCH_TEST_TOAST").is_some() {
                 let now = Local::now();
@@ -881,7 +914,9 @@ fn main() {
                 std::thread::sleep(REFRESH_CHECK);
             });
             // Places at start, then again whenever a monitor is plugged, unplugged or changed.
+            #[cfg(not(target_os = "macos"))]
             let handle = app.handle().clone();
+            #[cfg(not(target_os = "macos"))]
             std::thread::spawn(move || {
                 let mut seen = None;
                 loop {
@@ -900,7 +935,6 @@ fn main() {
                 }
                 track_pointer(app.handle().clone());
                 track_taskbar(app.handle().clone());
-                track_prayer(app.handle().clone());
                 keep_above_taskbar(app.handle().clone());
                 track_foreground(app.handle().clone());
                 track_fullscreen(app.handle().clone());

@@ -109,6 +109,34 @@ pub fn tray_tooltip(vm: &ViewModel) -> String {
     }
 }
 
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+/// macOS menu bar text beside the icon: `42% · 1:32`, or nothing when there are no numbers.
+pub fn menu_title(vm: &ViewModel) -> String {
+    match vm.pill {
+        PillState::NoClaude | PillState::NoData | PillState::LoggedOut => String::new(),
+        _ => format!("{} · {}", vm.session.value_text, vm.session.countdown_text),
+    }
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+/// macOS menu lines under the menu bar item: each limit, then the next prayer when known.
+pub fn menu_lines(vm: &ViewModel) -> Vec<String> {
+    let when = |l: &LimitView| if l.span_text.is_empty() { l.reset_text.clone() } else { l.span_text.clone() };
+    let mut lines = match vm.pill {
+        PillState::NoClaude => vec!["Install Claude Code to see your limits".to_string()],
+        PillState::LoggedOut => vec!["Log in to Claude Code".to_string()],
+        PillState::NoData => vec!["No reading yet".to_string()],
+        _ => vec![
+            format!("Session {} · {}", vm.session.value_text, when(&vm.session)),
+            format!("Week {} · {}", vm.week.value_text, when(&vm.week)),
+        ],
+    };
+    if let Some(p) = vm.prayer.as_ref().filter(|p| !p.unavailable && !p.next_name.is_empty()) {
+        lines.push(format!("Next prayer: {} {}, {}", p.next_name, p.next_time, p.next_in));
+    }
+    lines
+}
+
 /// Text of the tray's one show/hide item: it names the action a click will do.
 pub fn tray_toggle_label(show_notch: bool) -> &'static str {
     if show_notch { "Hide notch" } else { "Show notch" }
@@ -564,6 +592,31 @@ mod tests {
         assert_eq!(tray_tooltip(&build_with(Some(&r), Source::Local)), "Session 42%, week 68%");
         assert_eq!(tray_tooltip(&build_with(None, Source::Local)), "Claude Notch");
         assert_eq!(tray_tooltip(&build_with(None, Source::NotFound)), "Claude Notch");
+    }
+
+    #[test]
+    fn menu_title_is_pct_and_countdown() {
+        let now = local(28, 10, 0);
+        let r = reading(42.0, 68.0, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
+        assert_eq!(menu_title(&vm), format!("42% · {}", vm.session.countdown_text));
+        let none = build(None, true, Some(&Source::NotFound), &Settings::default(), false, now);
+        assert_eq!(menu_title(&none), "");
+    }
+
+    #[test]
+    fn menu_lines_include_next_prayer() {
+        let now = local(28, 10, 0);
+        let r = reading(42.0, 68.0, now);
+        let mut vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
+        let lines = menu_lines(&vm);
+        assert!(lines[0].starts_with("Session 42%"), "{lines:?}");
+        assert!(lines[1].starts_with("Week 68%"), "{lines:?}");
+        assert_eq!(lines.len(), 2);
+        vm.prayer = Some(PrayerView { place: "Kuala Lumpur".into(), unavailable: false, next_name: "Asar".into(), next_time: "16:20".into(), next_in: "in 2h 3m".into(), progress_pct: 0.0, times: vec![] });
+        assert_eq!(menu_lines(&vm)[2], "Next prayer: Asar 16:20, in 2h 3m");
+        let none = build(None, true, Some(&Source::NotFound), &Settings::default(), false, now);
+        assert_eq!(menu_lines(&none), vec!["Install Claude Code to see your limits".to_string()]);
     }
 
     #[test]

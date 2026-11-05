@@ -23,8 +23,23 @@ pub fn check(runner: &dyn Runner) -> Result<Option<String>, String> {
     Ok(newer(&body, env!("CARGO_PKG_VERSION")))
 }
 
+/// The Mac installer script: downloads the newest app with curl (no quarantine mark, so no
+/// Gatekeeper prompt), replaces the running one and opens it.
+#[cfg(target_os = "macos")]
+const INSTALL_SH: &str = "https://raw.githubusercontent.com/hanifmuhd/notch/main/install.sh";
+
+#[cfg(target_os = "macos")]
+pub fn install(_runner: &dyn Runner, _dir: &Path) -> Result<(), String> {
+    std::process::Command::new("/bin/sh")
+        .args(["-c", &format!("curl -fsSL {INSTALL_SH} | sh")])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
 /// Downloads the newest installer into `dir` and runs it in update mode: it closes the notch,
 /// installs over it and starts it again (/R), keeping settings and the events folder (/UPDATE).
+#[cfg(not(target_os = "macos"))]
 pub fn install(runner: &dyn Runner, dir: &Path) -> Result<(), String> {
     let setup = dir.join("ClaudeNotch-setup.exe");
     let out = setup.to_string_lossy();

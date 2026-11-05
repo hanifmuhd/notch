@@ -11,6 +11,40 @@ use tauri_plugin_autostart::ManagerExt;
 struct Tray {
     icon: TrayIcon,
     toggle: MenuItem<tauri::Wry>,
+    /// macOS: the menu's info lines and update version last shown, so it is rebuilt only on change.
+    #[cfg(target_os = "macos")]
+    shown: std::sync::Mutex<(Vec<String>, Option<String>)>,
+}
+
+/// The experimental macOS menu: info lines, then the actions (no notch to hide yet).
+#[cfg(target_os = "macos")]
+fn mac_menu(app: &AppHandle, lines: &[String], update: Option<&str>) -> tauri::Result<Menu<tauri::Wry>> {
+    let menu = Menu::new(app)?;
+    for (i, line) in lines.iter().enumerate() {
+        menu.append(&MenuItem::with_id(app, format!("line{i}"), line, false, None::<&str>)?)?;
+    }
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    if let Some(v) = update {
+        menu.append(&MenuItem::with_id(app, "update", format!("Update to {v}"), true, None::<&str>)?)?;
+    }
+    let on = app.autolaunch().is_enabled().unwrap_or(false);
+    menu.append(&CheckMenuItem::with_id(app, "autostart", "Open at login", true, on, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?)?;
+    menu.append(&MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?)?;
+    menu.append(&PredefinedMenuItem::separator(app)?)?;
+    menu.append(&MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?)?;
+    Ok(menu)
+}
+
+#[cfg(target_os = "macos")]
+fn rebuild_mac_menu(app: &AppHandle, tray: &Tray) {
+    let shown = tray.shown.lock().unwrap_or_else(|e| e.into_inner());
+    match mac_menu(app, &shown.0, shown.1.as_deref()) {
+        Ok(menu) => {
+            let _ = tray.icon.set_menu(Some(menu));
+        }
+        Err(e) => eprintln!("tray: macOS menu: {e}"),
+    }
 }
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
@@ -22,13 +56,29 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+    #[cfg(not(target_os = "macos"))]
     let menu = Menu::with_items(app, &[&toggle, &autostart, &settings, &refresh, &PredefinedMenuItem::separator(app)?, &quit])?;
+    #[cfg(target_os = "macos")]
+    let menu = mac_menu(app, &[], None)?;
 
     let mut builder = TrayIconBuilder::new().tooltip("Claude Notch").menu(&menu).on_menu_event({
         let autostart = autostart.clone();
         move |app, event| match event.id().as_ref() {
             "toggle" => toggle_notch(app),
-            "autostart" => switch_autostart(app, &autostart),
+            "autostart" => {
+                switch_autostart(app, &autostart);
+                #[cfg(target_os = "macos")]
+                if let Some(tray) = app.try_state::<Tray>() {
+                    rebuild_mac_menu(app, &tray); // the macOS menu holds its own check box
+                }
+            }
+            "update" => {
+                std::thread::spawn(|| {
+                    if let Err(e) = crate::update::install(&crate::source::SystemRunner, &std::env::temp_dir()) {
+                        eprintln!("tray: update failed: {e}");
+                    }
+                });
+            }
             "settings" => {
                 let app = app.clone();
                 tauri::async_runtime::spawn(async move {
@@ -48,7 +98,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let icon = builder.build(app)?;
     #[cfg(debug_assertions)]
     eprintln!("tray created");
-    app.manage(Tray { icon, toggle });
+    app.manage(Tray {
+        icon,
+        toggle,
+        #[cfg(target_os = "macos")]
+        shown: std::sync::Mutex::new((Vec::new(), None)),
+    });
     Ok(())
 }
 
@@ -57,6 +112,20 @@ pub fn update(app: &AppHandle, vm: &ViewModel) {
     let (Some(tray), Some(state)) = (app.try_state::<Tray>(), app.try_state::<AppState>()) else { return };
     let _ = tray.icon.set_tooltip(Some(tray_tooltip(vm)));
     let _ = tray.toggle.set_text(tray_toggle_label(state.settings().show_notch));
+    #[cfg(target_os = "macos")]
+    {
+        let _ = tray.icon.set_title(Some(crate::view::menu_title(vm)));
+        let want = (crate::view::menu_lines(vm), crate::LATEST_UPDATE.lock().unwrap_or_else(|e| e.into_inner()).clone());
+        let changed = {
+            let mut shown = tray.shown.lock().unwrap_or_else(|e| e.into_inner());
+            let changed = *shown != want;
+            *shown = want;
+            changed
+        };
+        if changed {
+            rebuild_mac_menu(app, &tray);
+        }
+    }
 }
 
 /// Flips `show_notch` through the same save command the webview uses, then applies it at once.
