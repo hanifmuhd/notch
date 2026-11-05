@@ -29,6 +29,13 @@ button { font: inherit; color: inherit; }
 .link-btn:disabled { cursor: default; text-decoration: none; color: var(--ink-muted); }
 .link-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 .select--wide { max-width: 70%; }
+.row-end { display: inline-flex; align-items: center; gap: 12px; }
+.sound { padding-top: 6px; }
+.file-row { display: flex; align-items: center; gap: 14px; min-height: 28px; font-size: 12.5px; }
+.file-row__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-muted); }
+.file-row [hidden] { display: none; }
+.setting__hint.is-error { color: var(--alert); }
+.setting__hint[hidden] { display: none; }
 
 .setting + .setting { margin-top: 12px; }
 .setting__head { display: flex; justify-content: space-between; align-items: baseline; }

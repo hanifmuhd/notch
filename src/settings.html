@@ -14,6 +14,7 @@
     <button class="nav__item" type="button" data-group="display" aria-current="page">Display</button>
     <button class="nav__item" type="button" data-group="claude">Claude</button>
     <button class="nav__item" type="button" data-group="prayer">Prayer</button>
+    <button class="nav__item" type="button" data-group="sounds">Sounds</button>
     <button class="nav__item" type="button" data-group="alerts">Alert levels</button>
     <button class="nav__item" type="button" data-group="about">About</button>
     <p class="nav__note">Changes save as you make them.</p>
@@ -76,6 +77,55 @@
           <label><input type="radio" name="prayer_remind" value="15"><span>15m<span class="sr-only">inutes</span></span></label>
         </span>
       </div>
+    </section>
+
+    <section class="group" id="g-sounds" aria-labelledby="h-sounds" hidden>
+      <h1 id="h-sounds">Sounds</h1>
+      <div class="setting__row">
+        <span id="s-bell-label">Bell</span>
+        <span class="row-end">
+          <span class="segmented" role="radiogroup" aria-labelledby="s-bell-label">
+            <label><input type="radio" name="bell" value="chime"><span>Chime</span></label>
+            <label><input type="radio" name="bell" value="ding"><span>Ding</span></label>
+            <label><input type="radio" name="bell" value="soft"><span>Soft</span></label>
+            <label><input type="radio" name="bell" value="double"><span>Double</span></label>
+          </span>
+          <button class="link-btn" type="button" data-play="bell" aria-label="Play the bell">Play</button>
+        </span>
+      </div>
+      <div class="sound" data-kind="needs">
+        <div class="setting__row">
+          <span id="s-needs-label">Claude needs you</span>
+          <span class="row-end">
+            <span class="segmented" role="radiogroup" aria-labelledby="s-needs-label">
+              <label><input type="radio" name="needs_sound" value="bell"><span>Bell</span></label>
+              <label><input type="radio" name="needs_sound" value="file"><span>My file</span></label>
+              <label><input type="radio" name="needs_sound" value="off"><span>Off</span></label>
+            </span>
+            <button class="link-btn" type="button" data-play="needs" aria-label="Play the Claude needs you sound">Play</button>
+          </span>
+        </div>
+        <div class="file-row"><span class="file-row__name"></span><button class="link-btn" type="button" data-choose>Choose file</button><button class="link-btn" type="button" data-remove>Remove</button></div>
+        <p class="setting__hint is-error" role="alert" hidden></p>
+        <input class="sr-only" type="file" accept=".mp3,.wav,.ogg,.m4a,audio/*" tabindex="-1" aria-hidden="true">
+      </div>
+      <div class="sound" data-kind="azan">
+        <div class="setting__row">
+          <span id="s-prayer-sound-label">Prayer time</span>
+          <span class="row-end">
+            <span class="segmented" role="radiogroup" aria-labelledby="s-prayer-sound-label">
+              <label><input type="radio" name="prayer_sound" value="bell"><span>Bell</span></label>
+              <label><input type="radio" name="prayer_sound" value="file"><span>My azan</span></label>
+              <label><input type="radio" name="prayer_sound" value="off"><span>Off</span></label>
+            </span>
+            <button class="link-btn" type="button" data-play="azan" aria-label="Play the prayer time sound">Play</button>
+          </span>
+        </div>
+        <div class="file-row"><span class="file-row__name"></span><button class="link-btn" type="button" data-choose>Choose file</button><button class="link-btn" type="button" data-remove>Remove</button></div>
+        <p class="setting__hint is-error" role="alert" hidden></p>
+        <input class="sr-only" type="file" accept=".mp3,.wav,.ogg,.m4a,audio/*" tabindex="-1" aria-hidden="true">
+      </div>
+      <p class="setting__hint">The reminder before a prayer plays the bell. Your own files: mp3, wav, ogg or m4a, up to 10 MB.</p>
     </section>
 
     <section class="group" id="g-alerts" aria-labelledby="h-alerts" hidden>

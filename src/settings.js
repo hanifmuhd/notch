@@ -86,6 +86,10 @@ function renderSettings(screens) {
     zoneSel.replaceChildren(...groups.values());
   }
   zoneSel.value = settings.prayer_zone;
+  for (const name of ['bell', 'needs_sound', 'prayer_sound']) {
+    for (const r of document.querySelectorAll(`input[name="${name}"]`)) r.checked = r.value === settings[name];
+  }
+  renderSounds();
   for (const key of ['session', 'week']) {
     $(`#t-${key}`).value = settings[key + '_threshold'];
     $(`[data-out="${key}"]`).textContent = settings[key + '_threshold'] + '%';
@@ -123,6 +127,85 @@ for (const input of document.querySelectorAll('[data-threshold]')) {
   input.addEventListener('input', () => { $(`[data-out="${key}"]`).textContent = input.value + '%'; });
   input.addEventListener('change', () => save({ [key + '_threshold']: Number(input.value) }));
 }
+
+// ---------- sounds ----------
+
+const SOUND_KEY = { needs: 'needs_sound', azan: 'prayer_sound' };
+const MAX_BYTES = 10 * 1024 * 1024;
+let files = { needs: null, azan: null }; // the stored file names
+let preview = null;
+
+function renderSounds() {
+  for (const box of document.querySelectorAll('.sound')) {
+    const kind = box.dataset.kind;
+    box.querySelector('.file-row__name').textContent = files[kind] ? `Your file: ${files[kind]}` : 'No file added yet';
+    box.querySelector('[data-remove]').hidden = !files[kind];
+    box.querySelector('[data-play]').disabled = settings && settings[SOUND_KEY[kind]] === 'off';
+  }
+}
+
+function soundError(kind, text) {
+  const p = document.querySelector(`.sound[data-kind="${kind}"] .is-error`);
+  p.textContent = text || '';
+  p.hidden = !text;
+}
+
+async function play(kind) {
+  if (preview) preview.pause();
+  const choice = kind === 'bell' ? 'bell' : settings[SOUND_KEY[kind]];
+  let src = `sounds/${settings.bell}.ogg`;
+  if (choice === 'file' && files[kind]) src = URL.createObjectURL(new Blob([await invoke('read_sound', { kind })]));
+  preview = new Audio(src);
+  preview.play().catch((e) => { if (kind !== 'bell') soundError(kind, 'This file cannot be played. Choose another one.'); console.error(e); });
+}
+
+async function loadFiles() {
+  files = (await call('sound_files')) || files;
+  if (settings) renderSounds();
+}
+
+for (const name of ['bell', 'needs_sound', 'prayer_sound']) {
+  for (const r of document.querySelectorAll(`input[name="${name}"]`)) {
+    r.addEventListener('change', () => {
+      const kind = name === 'needs_sound' ? 'needs' : 'azan';
+      // My file with no file yet: ask for one first; the choice is saved once it is stored.
+      if (r.value === 'file' && !files[kind]) {
+        r.checked = false;
+        document.querySelector(`.sound[data-kind="${kind}"] input[type="file"]`).click();
+        renderSettings();
+        return;
+      }
+      save({ [name]: r.value });
+    });
+  }
+}
+
+for (const box of document.querySelectorAll('.sound')) {
+  const kind = box.dataset.kind;
+  const picker = box.querySelector('input[type="file"]');
+  box.querySelector('[data-choose]').addEventListener('click', () => picker.click());
+  picker.addEventListener('change', async () => {
+    const file = picker.files[0];
+    picker.value = '';
+    if (!file) return;
+    if (file.size > MAX_BYTES) return soundError(kind, 'Choose a file under 10 MB.');
+    try {
+      await invoke('save_sound', new Uint8Array(await file.arrayBuffer()), { headers: { kind, name: encodeURIComponent(file.name) } });
+      soundError(kind, '');
+      await loadFiles();
+      save({ [SOUND_KEY[kind]]: 'file' });
+    } catch (e) {
+      soundError(kind, String(e));
+    }
+  });
+  box.querySelector('[data-remove]').addEventListener('click', async () => {
+    await call('remove_sound', { kind });
+    await loadFiles();
+    if (settings[SOUND_KEY[kind]] === 'file') save({ [SOUND_KEY[kind]]: 'bell' });
+    box.querySelector('[data-choose]').focus(); // the Remove button is gone
+  });
+}
+for (const b of document.querySelectorAll('[data-play]')) b.addEventListener('click', () => play(b.dataset.play));
 
 // ---------- task alerts switch (reads Claude's settings.json, may take seconds on WSL) ----------
 
@@ -190,7 +273,8 @@ window.__TAURI__.app.getVersion().then((v) => { $('#s-version').textContent = `V
     const s = await call('get_settings');
     if (s) { settings = s; renderSettings(); }
   });
-  const [s, screens, z] = await Promise.all([call('get_settings'), call('list_screens'), call('get_zones')]);
+  const [s, screens, z, f] = await Promise.all([call('get_settings'), call('list_screens'), call('get_zones'), call('sound_files')]);
+  files = f || files;
   zones = z || [];
   if (s) {
     settings = s;
