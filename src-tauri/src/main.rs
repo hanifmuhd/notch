@@ -12,6 +12,7 @@ mod placement;
 mod prayer;
 mod prayer_zones;
 mod settings;
+mod sounds;
 mod source;
 mod taskbar;
 mod tray;
@@ -367,6 +368,43 @@ fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
 #[tauri::command]
 async fn list_distros() -> Vec<String> {
     tauri::async_runtime::spawn_blocking(|| source::list_distros(&SystemRunner)).await.unwrap_or_default()
+}
+
+/// Stores the owner's sound file: raw bytes in the body, `kind` (needs|azan) and the
+/// percent-encoded file `name` in headers (only its extension is used).
+#[tauri::command]
+fn save_sound(state: State<AppState>, request: tauri::ipc::Request) -> Result<(), String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else { return Err("Choose a sound file.".into()) };
+    let header = |k: &str| request.headers().get(k).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let kind = sounds::Kind::parse(header("kind")).ok_or("unknown sound kind")?;
+    sounds::save(&state.data_dir(), kind, header("name"), bytes)
+}
+
+#[tauri::command]
+fn remove_sound(state: State<AppState>, kind: String) -> Result<(), String> {
+    sounds::remove(&state.data_dir(), sounds::Kind::parse(&kind).ok_or("unknown sound kind")?);
+    Ok(())
+}
+
+/// The owner's file for `kind`, as bytes for a blob URL in the page.
+#[tauri::command]
+fn read_sound(state: State<AppState>, kind: String) -> Result<tauri::ipc::Response, String> {
+    let kind = sounds::Kind::parse(&kind).ok_or("unknown sound kind")?;
+    let path = sounds::find(&state.data_dir(), kind).ok_or("no file")?;
+    std::fs::read(path).map(tauri::ipc::Response::new).map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+struct SoundFiles {
+    needs: Option<String>,
+    azan: Option<String>,
+}
+
+/// Which own files exist, by file name, for the Sounds settings.
+#[tauri::command]
+fn sound_files(state: State<AppState>) -> SoundFiles {
+    let name = |k| sounds::find(&state.data_dir(), k).and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()));
+    SoundFiles { needs: name(sounds::Kind::Needs), azan: name(sounds::Kind::Azan) }
 }
 
 /// Opens the settings window, or brings the open one to the front (settings window spec).
@@ -799,6 +837,10 @@ fn main() {
             get_zones,
             check_update,
             open_settings,
+            save_sound,
+            remove_sound,
+            read_sound,
+            sound_files,
             install_update,
             focus_previous,
             list_distros,

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use std::io;
 use std::path::Path;
 
@@ -17,6 +17,32 @@ pub enum ShowIn {
     #[default]
     Top,
     Taskbar,
+}
+
+/// The built-in bells (src/sounds/<name>.ogg).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Bell {
+    #[default]
+    Chime,
+    Ding,
+    Soft,
+    Double,
+}
+
+/// What an alert plays: the chosen bell, the owner's own file, or nothing.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum SoundChoice {
+    #[default]
+    Bell,
+    File,
+    Off,
+}
+
+/// An unknown value resets only its own field instead of making the whole file unreadable.
+fn or_default<'de, D: Deserializer<'de>, T: Deserialize<'de> + Default>(d: D) -> Result<T, D::Error> {
+    Ok(T::deserialize(serde_json::Value::deserialize(d)?).unwrap_or_default())
 }
 
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
@@ -46,6 +72,13 @@ pub struct Settings {
     pub prayer_on: bool,
     pub prayer_zone: String,
     pub prayer_remind: u32,
+    /// Sounds (settings window spec): the bell, and what needs-you and prayer alerts play.
+    #[serde(deserialize_with = "or_default")]
+    pub bell: Bell,
+    #[serde(deserialize_with = "or_default")]
+    pub needs_sound: SoundChoice,
+    #[serde(deserialize_with = "or_default")]
+    pub prayer_sound: SoundChoice,
 }
 
 impl Default for Settings {
@@ -64,6 +97,9 @@ impl Default for Settings {
             prayer_on: false,
             prayer_zone: "WLY01".into(),
             prayer_remind: 10,
+            bell: Bell::Chime,
+            needs_sound: SoundChoice::Bell,
+            prayer_sound: SoundChoice::Bell,
         }
     }
 }
@@ -79,13 +115,17 @@ pub fn load(path: &Path) -> Settings {
 
 /// Writes to `<path>.tmp` then renames over the target, so a crash never leaves a half-written file.
 pub fn write_atomic(path: &Path, text: &str) -> io::Result<()> {
+    write_bytes_atomic(path, text.as_bytes())
+}
+
+pub fn write_bytes_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
     let mut tmp = path.as_os_str().to_owned();
     tmp.push(".tmp");
     let tmp = std::path::PathBuf::from(tmp);
-    std::fs::write(&tmp, text)?;
+    std::fs::write(&tmp, bytes)?;
     std::fs::rename(&tmp, path)
 }
 
@@ -157,6 +197,9 @@ mod tests {
             prayer_on: true,
             prayer_zone: "SGR01".into(),
             prayer_remind: 5,
+            bell: Bell::Soft,
+            needs_sound: SoundChoice::Off,
+            prayer_sound: SoundChoice::File,
         };
         save(&path, &s).unwrap();
         assert_eq!(load(&path), s);
@@ -263,6 +306,24 @@ mod tests {
         // A zone that is not in JAKIM's list falls back to the default.
         fs::write(&path, r#"{"prayer_zone":"XYZ99"}"#).unwrap();
         assert_eq!(load(&path).prayer_zone, "WLY01");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn sound_settings_default_and_tolerate_unknown_values() {
+        let dir = test_dir("sounds");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("settings.json");
+        fs::write(&path, r#"{"session_threshold":80}"#).unwrap();
+        let s = load(&path);
+        assert_eq!((s.bell, s.needs_sound, s.prayer_sound), (Bell::Chime, SoundChoice::Bell, SoundChoice::Bell));
+        // An unknown value resets only that field; the rest of the file still loads.
+        fs::write(&path, r#"{"session_threshold":80,"needs_sound":"loud","bell":"gong"}"#).unwrap();
+        let s = load(&path);
+        assert_eq!((s.session_threshold, s.needs_sound, s.bell), (80, SoundChoice::Bell, Bell::Chime));
+        let s = Settings { bell: Bell::Double, needs_sound: SoundChoice::Off, prayer_sound: SoundChoice::File, ..Settings::default() };
+        save(&path, &s).unwrap();
+        assert_eq!(load(&path), s);
         let _ = fs::remove_dir_all(&dir);
     }
 }
