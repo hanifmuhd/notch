@@ -296,6 +296,7 @@ function reportHits() {
 function setOpen(open) {
   clearTimeout(closeTimer);
   clearTimeout(hoverTimer);
+  if (open) stopSound(); // opening the notch is "seen": the sound stops
   if (open === isOpen) return;
   isOpen = open;
   pill.setAttribute('aria-expanded', String(open));
@@ -395,8 +396,60 @@ setInterval(checkUpdate, 6 * 60 * 60 * 1000);
 async function followSettings() {
   const s = await call('get_settings');
   if (!s) return; // not loaded yet, or the call failed; keep what is shown
+  soundSettings = s;
   notch.dataset.align = s.position; // the window sits at that edge; the shape follows
   reportHits();
+}
+
+// ---------- sound: bells and the azan, one at a time; the prayer sound wins ----------
+
+let soundSettings = null; // the settings the sounds follow (bell, needs_sound, prayer_sound)
+let playing = null; // { audio, kind } while a sound plays
+let seenAttention = null; // sessions needing you at the last view; a rise plays the needs-you sound
+
+/** What an alert plays: 'azan', 'needs-file', 'bell' or null. `timePlaying`: a prayer-time sound is on. */
+function pickSound(kind, s, timePlaying) {
+  if (!s) return null;
+  if (kind === 'time') return s.prayer_sound === 'off' ? null : s.prayer_sound === 'file' ? 'azan' : 'bell';
+  if (timePlaying) return null; // a bell never cuts into the prayer sound
+  if (kind === 'remind') return s.prayer_sound === 'off' ? null : 'bell';
+  return s.needs_sound === 'off' ? null : s.needs_sound === 'file' ? 'needs-file' : 'bell';
+}
+
+function stopSound() {
+  if (!playing) return;
+  playing.audio.pause();
+  playing = null;
+}
+
+async function playAlert(kind) {
+  const pick = pickSound(kind, soundSettings, !!playing && playing.kind === 'time');
+  if (!pick) return;
+  stopSound();
+  const bell = `sounds/${soundSettings.bell}.ogg`;
+  let src = bell;
+  if (pick !== 'bell') {
+    const bytes = await invoke('read_sound', { kind: pick === 'azan' ? 'azan' : 'needs' }).catch(() => null);
+    if (bytes) src = URL.createObjectURL(new Blob([bytes]));
+  }
+  const start = (url) => {
+    const audio = new Audio(url);
+    playing = { audio, kind };
+    audio.addEventListener('ended', () => { if (playing && playing.audio === audio) playing = null; });
+    return audio.play();
+  };
+  start(src).catch((e) => {
+    console.error('sound', e);
+    if (src !== bell) start(bell).catch(() => {}); // an unplayable own file falls back to the bell, once
+  });
+}
+
+/** Sounds for a view: a new prayer banner, or more sessions needing you than before. */
+function soundFor(vm) {
+  if (vm.banner) playAlert(vm.banner.kind);
+  const a = vm.attention || 0;
+  if (seenAttention !== null && a > seenAttention && !vm.banner) playAlert('needs');
+  seenAttention = a;
 }
 
 // ---------- start ----------
@@ -418,6 +471,7 @@ function takeFlash(vm) {
   // Listen before the first fetch, so a refresh that finishes meanwhile is neither missed nor its announcement lost.
   await listen('usage-updated', (e) => {
     takeFlash(e.payload); // the same text arrives in `announce`, so it is spoken once
+    soundFor(e.payload);
     render(e.payload);
     if (e.payload.announce) announce(e.payload.announce);
   });
@@ -427,10 +481,11 @@ function takeFlash(vm) {
   await listen('pointer', (e) => { if (e.payload) hoverIn(); else hoverOut(); });
   // Any save (settings window or tray) may move the notch.
   await listen('settings-changed', followSettings);
+  await followSettings(); // first, so a banner that fired before we listened has its sound settings
   const vm = await call('get_view');
   if (vm) {
     takeFlash(vm); // a prayer banner that fired before we listened
+    soundFor(vm);
     render(vm);
   }
-  await followSettings();
 })();

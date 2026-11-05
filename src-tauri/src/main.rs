@@ -606,11 +606,11 @@ fn prayer_texts(a: &prayer::Alert) -> (String, view::Banner) {
     match a {
         prayer::Alert::Time(p, t) => (
             format!("{} — It's time to pray", p.name()),
-            view::Banner { text: format!("{} · It's time to pray · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 60 },
+            view::Banner { text: format!("{} · It's time to pray · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 60, kind: "time" },
         ),
         prayer::Alert::Remind(p, t, m) => (
             format!("{} in {m} min", p.name()),
-            view::Banner { text: format!("{} in {m} min · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 20 },
+            view::Banner { text: format!("{} in {m} min · {}", p.name(), hm(*t)), short: format!("{} · {}", p.name(), hm(*t)), seconds: 20, kind: "remind" },
         ),
     }
 }
@@ -935,8 +935,16 @@ mod tests {
     }
 
     #[test]
+    fn banner_kind_is_time_or_remind() {
+        use chrono::TimeZone;
+        let t = chrono_tz::Asia::Kuala_Lumpur.with_ymd_and_hms(2026, 11, 4, 18, 58, 0).unwrap().with_timezone(&Utc);
+        assert_eq!(prayer_texts(&prayer::Alert::Time(prayer::Prayer::Maghrib, t)).1.kind, "time");
+        assert_eq!(prayer_texts(&prayer::Alert::Remind(prayer::Prayer::Maghrib, t, 10)).1.kind, "remind");
+    }
+
+    #[test]
     fn banner_fired_before_the_page_listens_is_still_shown() {
-        let b = view::Banner { text: "Subuh in 10 min · 05:48".into(), short: "Subuh · 05:48".into(), seconds: 20 };
+        let b = view::Banner { text: "Subuh in 10 min · 05:48".into(), short: "Subuh · 05:48".into(), seconds: 20, kind: "remind" };
         assert_eq!(still_showing(&b, std::time::Duration::from_millis(2500)).map(|x| x.seconds), Some(18));
         assert_eq!(still_showing(&b, std::time::Duration::from_secs(19)).map(|x| x.seconds), Some(1));
         assert!(still_showing(&b, std::time::Duration::from_secs(20)).is_none());

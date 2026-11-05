@@ -149,6 +149,8 @@ pub struct Banner {
     /// Shorter text for the taskbar capsule.
     pub short: String,
     pub seconds: u32,
+    /// "time" or "remind": decides which sound the notch plays.
+    pub kind: &'static str,
 }
 
 pub fn prayer_view(days: &[Day], now: DateTime<Local>, place: &str) -> PrayerView {
