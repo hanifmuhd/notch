@@ -89,8 +89,8 @@ The installer lands in `C:\Users\hanif\code\notch-target\release\bundle\nsis\`. 
 To release, raise `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, build, then attach the installer under the fixed name `ClaudeNotch-setup.exe`, which the install command and the download link expect:
 
 ```
-cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.3.0_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
-gh release create v1.3.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.3.0" --notes "Prayer times"
+cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.4.0_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
+gh release create v1.4.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.4.0" --notes "What changed"
 ```
 
 ## Acceptance checklist
