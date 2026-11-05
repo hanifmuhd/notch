@@ -28,17 +28,25 @@ It downloads the newest installer, installs it quietly and starts the notch.
 - Closed: the double ring and your session % on the left, the time until the session resets on the right (`1:32`, or `45m` under an hour). Amber means you passed your alert level, red means full (`back in 1:32`), `ready` means no session is running.
 - Rest the pointer on the notch for a moment, or click it, or press Enter, to open the panel; it grows out of the notch. Esc closes it. Moving past the notch on the way to your browser tabs does not open it.
 - The panel shows the rings large, one line per limit with its reset time, and "Runs out around" when you are using Claude faster than the clock.
-- The gear opens settings. The bottom of settings shows the version you have, with **Check for updates** (or **Update to x.y.z** when one is out). The refresh button updates now; it also updates by itself every 5 minutes.
+- The gear opens the settings window (also in the tray menu). The refresh button updates now; it also updates by itself every 5 minutes.
 - When a newer version is out, Windows shows one notification ("Claude Notch 1.4.1 is ready"), and the panel shows **Update to 1.4.1** (or whichever version) at the top. Click it and the notch downloads the new version, installs it and starts again by itself, with your settings kept.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
 - With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The notch shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.
 - A session that is working shows as a small pod beside the notch with how long it has been running. It turns amber with a bell when it needs you, and a soft amber glow breathes around the notch until you answer. A session that stops sending news (Esc, a crash, a closed terminal) disappears after 10 minutes.
-- With **Prayer times** on, the panel shows the next prayer for your JAKIM zone, its time and how long until it, a line since the previous prayer, and today's five times (Subuh, Zohor, Asar, Maghrib, Isyak). At each prayer time the notch shows a moon with "Maghrib · It's time to pray · 18:58" for a minute, and before it "Maghrib in 10 min · 18:58" for 20 seconds; each also gives a Windows notification. If the times cannot be downloaded, the panel says "Prayer times unavailable — will retry" and nothing alerts.
+- With **Prayer times** on, the panel shows the next prayer for your JAKIM zone, its time and how long until it, a line since the previous prayer, and today's five times (Subuh, Zohor, Asar, Maghrib, Isyak). At each prayer time the notch shows a moon with "Maghrib · It's time to pray · 18:58" for a minute, and before it "Maghrib in 10 min · 18:58" for 20 seconds; each also gives a Windows notification. After that a small blue moon stays beside the numbers until you open the notch. If the times cannot be downloaded, the panel says "Prayer times unavailable — will retry" and nothing alerts.
+- **Sounds**: when more sessions need you, and before a prayer, the notch plays a bell; at the prayer time it plays your own azan if you added one, or the bell. The prayer sound wins over a bell, and opening the notch stops any sound.
 
 ## Settings
 
-Changes are saved as you make them.
+The gear in the panel, or **Settings…** in the tray menu, opens the settings window. Changes are saved as you make them, and Esc closes the window. Groups:
+
+- **Display**: Show in, Show on, Position, Stay behind windows.
+- **Claude**: Get usage from, Start WSL, Show when Claude needs you, Also when a task finishes.
+- **Prayer**: Prayer times, Zone, Remind before.
+- **Sounds**: the bell, what Claude needs you plays, what the prayer time plays.
+- **Alert levels**: Session alert at, Week alert at.
+- **About**: your version, with **Check for updates** (or **Update to x.y.z** when one is out).
 
 - **Show in**: Top of screen (default) or Taskbar. In the taskbar the notch is a capsule just left of the tray that opens upward. When the taskbar gets crowded it shrinks to the rings, and when there is no room at all it moves to the top until room returns. An auto-hiding or vertical taskbar uses the top.
 - **Show on**: which screen the notch sits on, by the monitor's own name. If that screen is unplugged, it moves to your main screen.
@@ -49,6 +57,8 @@ Changes are saved as you make them.
 - **Show when Claude needs you** (Task alerts): adds the notch's own hooks to Claude Code's `settings.json` for the install it reads usage from, and removes them when you turn it off. Your other hooks stay as they are, and the first change keeps a copy as `settings.json.notch-backup`. It is greyed out until Claude Code is found, or while WSL is stopped and "Start WSL" is off.
 - **Also when a task finishes**: on by default. Off means only "needs you" alerts.
 - **Prayer times**: off by default. **Zone** is your JAKIM zone (default WLY01, Kuala Lumpur and Putrajaya). **Remind before**: Off, 5, 10 (default) or 15 minutes. Zone and Remind before show while Prayer times is on.
+- **Bell**: Chime (default), Ding, Soft or Double. **Play** lets you hear it.
+- **Claude needs you**: Bell (default), My file or Off. **Prayer time**: Bell (default), My azan or Off; the reminder before a prayer plays the bell unless this is Off. **Choose file** takes an mp3, wav, ogg or m4a up to 10 MB and keeps a copy in the app's folder, so moving the original does not matter; **Remove** deletes the copy and goes back to the bell.
 - **Session alert at** and **Week alert at**: the percentage that triggers an amber warning and one Windows notification, from 50 to 99. At 100 percent it always alerts as full.
 
 ## Tray menu
@@ -57,6 +67,7 @@ Right-click the tray icon. Its tooltip shows the current numbers.
 
 - **Hide notch** or **Show notch**
 - **Start with Windows** (off by default)
+- **Settings…**
 - **Refresh now**
 - **Quit**
 
@@ -89,8 +100,8 @@ The installer lands in `C:\Users\hanif\code\notch-target\release\bundle\nsis\`. 
 To release, raise `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, build, then attach the installer under the fixed name `ClaudeNotch-setup.exe`, which the install command and the download link expect:
 
 ```
-cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.4.3_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
-gh release create v1.4.3 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.4.3" --notes "What changed"
+cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.5.0_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
+gh release create v1.5.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.5.0" --notes "What changed"
 ```
 
 ## Acceptance checklist
@@ -174,3 +185,11 @@ Try each step on your own PC before a release, and write down anything that fail
 
 42. With 1.4.0 installed and a newer release on GitHub, open the panel within 6 hours of the release. It shows "Update to <version>"; click it. The notch closes, comes back within a minute without the Update line, Windows Settings → Apps lists the new version, and your settings are the same.
 43. With six or more sessions listed, open the panel. Only the session list scrolls; the rings, prayer times and the footer stay in view.
+
+### Settings window and sounds (v1.5)
+
+44. Click the gear, then Settings… in the tray: one settings window, brought to the front. Esc closes it.
+45. Change Position and Show in from the window: the notch moves at once. Hide the notch from the tray with the window open, change any setting: the notch stays hidden.
+46. Sounds: choose each bell and press Play. Choose a 12 MB file: "Choose a file under 10 MB." and nothing changes. Add an azan mp3: My azan turns on and Play plays it. Remove: back to Bell.
+47. Wait for a prayer reminder and a prayer time with the notch closed: the bell for the reminder, your azan (or the bell) at the time. Open the notch while it plays: it stops. A small moon stays after the banner until you open the notch.
+48. In the taskbar, with a bell and the moon showing, the capsule shows "34%  4:01  bell 1  moon" without cutting anything.
