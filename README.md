@@ -116,8 +116,8 @@ The Mac version is built by GitHub Actions (`.github/workflows/mac.yml`) on macO
 To release, raise `version` in `src-tauri/tauri.conf.json` and `src-tauri/Cargo.toml`, build, then attach the installer under the fixed name `ClaudeNotch-setup.exe`, which the install command and the download link expect:
 
 ```
-cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.5.0_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
-gh release create v1.5.0 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.5.0" --notes "What changed"
+cp "/mnt/c/Users/hanif/code/notch-target/release/bundle/nsis/Claude Notch_1.5.1_x64-setup.exe" /tmp/ClaudeNotch-setup.exe
+gh release create v1.5.1 /tmp/ClaudeNotch-setup.exe --title "Claude Notch 1.5.1" --notes "What changed"
 ```
 
 ## Acceptance checklist
