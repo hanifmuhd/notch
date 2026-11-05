@@ -29,7 +29,7 @@ It downloads the newest installer, installs it quietly and starts the notch.
 - Rest the pointer on the notch for a moment, or click it, or press Enter, to open the panel; it grows out of the notch. Esc closes it. Moving past the notch on the way to your browser tabs does not open it.
 - The panel shows the rings large, one line per limit with its reset time, and "Runs out around" when you are using Claude faster than the clock.
 - The gear opens settings. The bottom of settings shows the version you have, with **Check for updates** (or **Update to x.y.z** when one is out). The refresh button updates now; it also updates by itself every 5 minutes.
-- When a newer version is out, the panel shows **Update to 1.4.0** (or whichever version) at the top. Click it and the notch downloads the new version, installs it and starts again by itself, with your settings kept.
+- When a newer version is out, Windows shows one notification ("Claude Notch 1.4.1 is ready"), and the panel shows **Update to 1.4.1** (or whichever version) at the top. Click it and the notch downloads the new version, installs it and starts again by itself, with your settings kept.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.
 - With **Task alerts** on, the notch tells you when a Claude Code session needs your permission or answer, and when a reply that took a minute or more finishes. The notch shows the line for a few seconds, then a bell with a count; the panel lists the sessions. Each also gives a Windows notification. Closing the panel clears the finished ones.

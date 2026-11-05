@@ -369,8 +369,18 @@ async fn list_distros() -> Vec<String> {
 
 /// The newer version on GitHub, if any; the page asks on start and every 6 hours.
 #[tauri::command]
-async fn check_update() -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.map_err(|e| e.to_string())?
+async fn check_update(app: AppHandle) -> Result<Option<String>, String> {
+    static TOLD: Mutex<Option<String>> = Mutex::new(None);
+    let found = tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.map_err(|e| e.to_string())??;
+    if let Some(v) = &found {
+        // One Windows notification per new version while the notch runs.
+        let mut told = TOLD.lock().unwrap_or_else(|e| e.into_inner());
+        if told.as_ref() != Some(v) {
+            *told = Some(v.clone());
+            toast(&app, format!("Claude Notch {v} is ready"), "Open the notch and click Update to install it.".into());
+        }
+    }
+    Ok(found)
 }
 
 #[tauri::command]
