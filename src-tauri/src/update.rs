@@ -15,11 +15,12 @@ pub fn newer(body: &str, current: &str) -> Option<String> {
     (parts(latest)? > parts(current)?).then(|| latest.to_string())
 }
 
-pub fn check(runner: &dyn Runner) -> Option<String> {
+/// Err only when GitHub cannot be reached, so "no update" is never said by mistake.
+pub fn check(runner: &dyn Runner) -> Result<Option<String>, String> {
     let body = runner
         .run("curl.exe", &["-s", "-f", "-m", "20", "-A", "ClaudeNotch", LATEST], Duration::from_secs(25))
-        .ok()?;
-    newer(&body, env!("CARGO_PKG_VERSION"))
+        .map_err(|e| format!("could not reach GitHub: {e:?}"))?;
+    Ok(newer(&body, env!("CARGO_PKG_VERSION")))
 }
 
 /// Downloads the newest installer into `dir` and runs it in update mode: it closes the notch,

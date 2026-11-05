@@ -359,27 +359,47 @@ $('#install').addEventListener('click', () => call('open_install_page'));
 
 // ---------- update ----------
 
-const updateBtn = $('#update-btn');
+// The same update shows at the top of the panel and in settings.
+const updateBtns = [$('#update-btn'), $('#s-update')];
+const settingsUpdate = $('#s-update');
 let updateTo = null;
-async function checkUpdate() {
-  if (updateBtn.disabled) return; // already installing
-  updateTo = await invoke('check_update').catch(() => null);
-  if (updateTo) updateBtn.textContent = `Update to ${updateTo}`;
+let installing = false;
+const setUpdate = (text, busy) => updateBtns.forEach((b) => { b.textContent = text; b.disabled = busy; });
+/** Asks GitHub for a newer version; throws when GitHub cannot be reached. */
+async function findUpdate() {
+  if (installing) return;
+  updateTo = await invoke('check_update');
+  setUpdate(updateTo ? `Update to ${updateTo}` : 'Check for updates', false);
   $('#update').hidden = !updateTo;
   fitPanel();
 }
-updateBtn.addEventListener('click', async () => {
-  updateBtn.disabled = true;
-  updateBtn.textContent = `Downloading ${updateTo}…`;
+const checkUpdate = () => findUpdate().catch(() => {}); // the timed check stays quiet
+async function installUpdate() {
+  installing = true;
+  setUpdate(`Downloading ${updateTo}…`, true);
   try {
     await invoke('install_update'); // the installer then closes the notch and starts the new one
-    updateBtn.textContent = `Installing ${updateTo}…`;
+    setUpdate(`Installing ${updateTo}…`, true);
   } catch (e) {
     console.error('install_update', e);
-    updateBtn.disabled = false;
-    updateBtn.textContent = 'Update failed. Try again';
+    installing = false;
+    setUpdate('Update failed. Try again', false);
   }
+}
+$('#update-btn').addEventListener('click', installUpdate);
+settingsUpdate.addEventListener('click', async () => {
+  if (updateTo) return installUpdate();
+  settingsUpdate.disabled = true;
+  settingsUpdate.textContent = 'Checking…';
+  try {
+    await findUpdate();
+    if (!updateTo) settingsUpdate.textContent = 'You have the newest version';
+  } catch {
+    settingsUpdate.textContent = 'Could not check. Try again';
+  }
+  settingsUpdate.disabled = false;
 });
+window.__TAURI__.app.getVersion().then((v) => { $('#s-version').textContent = `Version ${v}`; }).catch(() => {});
 checkUpdate();
 setInterval(checkUpdate, 6 * 60 * 60 * 1000);
 

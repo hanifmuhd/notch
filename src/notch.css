@@ -272,6 +272,8 @@ button { font: inherit; color: inherit; }
 .range:focus-visible { outline: none; }
 .range:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--focus); outline-offset: 2px; }
 .setting__hint { margin: 0; font-size: 12px; color: var(--ink-muted); text-wrap: pretty; }
+.setting__version { margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--line); }
+.setting__version .link-btn { font-size: 12.5px; }
 
 /* ---------- reduced motion: no spring, no blur, no breathing ---------- */
 

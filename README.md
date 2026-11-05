@@ -28,7 +28,7 @@ It downloads the newest installer, installs it quietly and starts the notch.
 - Closed: the double ring and your session % on the left, the time until the session resets on the right (`1:32`, or `45m` under an hour). Amber means you passed your alert level, red means full (`back in 1:32`), `ready` means no session is running.
 - Rest the pointer on the notch for a moment, or click it, or press Enter, to open the panel; it grows out of the notch. Esc closes it. Moving past the notch on the way to your browser tabs does not open it.
 - The panel shows the rings large, one line per limit with its reset time, and "Runs out around" when you are using Claude faster than the clock.
-- The gear opens settings. The refresh button updates now; it also updates by itself every 5 minutes.
+- The gear opens settings. The bottom of settings shows the version you have, with **Check for updates** (or **Update to x.y.z** when one is out). The refresh button updates now; it also updates by itself every 5 minutes.
 - When a newer version is out, the panel shows **Update to 1.4.0** (or whichever version) at the top. Click it and the notch downloads the new version, installs it and starts again by itself, with your settings kept.
 - Old numbers turn grey and show "As of" with the time. This happens when WSL is stopped, you are offline, or Claude returns an error.
 - If Claude Code is logged out, the notch says "Log in to Claude Code" and hides the old numbers until you run `claude`, then `/login`.

@@ -369,8 +369,8 @@ async fn list_distros() -> Vec<String> {
 
 /// The newer version on GitHub, if any; the page asks on start and every 6 hours.
 #[tauri::command]
-async fn check_update() -> Option<String> {
-    tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.ok().flatten()
+async fn check_update() -> Result<Option<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| update::check(&SystemRunner)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
