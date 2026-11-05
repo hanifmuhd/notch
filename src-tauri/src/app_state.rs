@@ -240,7 +240,7 @@ impl Inner {
 fn source_for(pref: &SourcePref) -> Option<Source> {
     match pref {
         SourcePref::Auto => None,
-        SourcePref::Windows => Some(Source::Windows),
+        SourcePref::Windows => Some(Source::Local),
         SourcePref::Wsl { distro } => Some(Source::Wsl { distro: distro.clone() }),
     }
 }
@@ -324,7 +324,7 @@ mod tests {
 
     fn state() -> TestState {
         let s = test_state(Settings::default());
-        s.lock().source = Some(Source::Windows);
+        s.lock().source = Some(Source::Local);
         s
     }
 
@@ -410,7 +410,7 @@ mod tests {
             .save_settings(Settings { source: SourcePref::Windows, ..Settings::default() })
             .unwrap();
         assert!(changed);
-        assert_eq!(s.snapshot().1, Some(Source::Windows));
+        assert_eq!(s.snapshot().1, Some(Source::Local));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -536,7 +536,7 @@ mod tests {
         // Detection for Auto is running; the user switches to Windows meanwhile.
         s.save_settings(Settings { source: SourcePref::Windows, ..Settings::default() }).unwrap();
         assert!(!s.set_detected(&old.source, Some(Source::Wsl { distro: "Ubuntu".into() })));
-        assert_eq!(s.snapshot().1, Some(Source::Windows));
+        assert_eq!(s.snapshot().1, Some(Source::Local));
     }
 
     #[test]

@@ -12,7 +12,8 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Source {
-    Windows,
+    /// Claude on this computer (Windows, or the Mac).
+    Local,
     Wsl { distro: String },
     NotFound,
 }
@@ -179,12 +180,18 @@ fn wsl_has_claude(runner: &dyn Runner, distro: &str) -> bool {
 /// never NotFound.
 pub fn detect_with(runner: &dyn Runner, pref: &SourcePref, start_wsl: bool) -> Option<Source> {
     match pref {
-        SourcePref::Windows => return Some(Source::Windows),
+        SourcePref::Windows => return Some(Source::Local),
         SourcePref::Wsl { distro } => return Some(Source::Wsl { distro: distro.clone() }),
         SourcePref::Auto => {}
     }
+    if cfg!(target_os = "macos") {
+        // No WSL on a Mac; the login shell has the PATH Claude was installed on.
+        let (program, args) = login_shell("command -v claude");
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        return Some(if runner.run(program, &args, PROBE_TIMEOUT).is_ok() { Source::Local } else { Source::NotFound });
+    }
     if runner.run("where.exe", &["claude"], PROBE_TIMEOUT).is_ok() {
-        return Some(Source::Windows);
+        return Some(Source::Local);
     }
     let list_args: &[&str] = if start_wsl { &["-l", "-q"] } else { &["-l", "--running", "-q"] };
     let found = runner
@@ -203,11 +210,26 @@ fn detect(runner: &dyn Runner, pref: &SourcePref) -> Source {
     detect_with(runner, pref, true).unwrap_or(Source::NotFound)
 }
 
+/// A command run through the Mac's login shell: apps opened from Finder do not get the
+/// terminal's PATH, where Homebrew or ~/.local/bin put `claude`.
+pub fn login_shell(cmd: &str) -> (&'static str, Vec<String>) {
+    ("/bin/zsh", vec!["-lc".to_string(), cmd.to_string()])
+}
+
 /// Program and arguments that print the usage JSON. `NotFound` has none to run.
 pub fn usage_command(source: &Source) -> (String, Vec<String>) {
+    usage_command_for(source, cfg!(target_os = "macos"))
+}
+
+fn usage_command_for(source: &Source, mac: bool) -> (String, Vec<String>) {
+    if mac {
+        // exec: the runner's timeout then stops claude itself, not just the shell.
+        let (program, args) = login_shell(r#"exec claude -p --settings '{"disableAllHooks":true}' --output-format json /usage"#);
+        return (program.to_string(), args);
+    }
     let (program, args): (&str, Vec<&str>) = match source {
         // cmd /c launches both claude.exe and an npm claude.cmd shim.
-        Source::Windows | Source::NotFound => (
+        Source::Local | Source::NotFound => (
             "cmd.exe",
             vec![
                 "/d", "/c", "claude", "-p", "--settings", r#"{"disableAllHooks":true}"#,
@@ -244,6 +266,20 @@ pub fn wsl_running(runner: &dyn Runner, distro: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn login_shell_wraps_the_command() {
+        assert_eq!(login_shell("command -v claude"), ("/bin/zsh", vec!["-lc".to_string(), "command -v claude".to_string()]));
+    }
+
+    #[test]
+    fn mac_usage_command_disables_hooks() {
+        let (program, args) = usage_command_for(&Source::Local, true);
+        assert_eq!(program, "/bin/zsh");
+        assert_eq!(args, vec!["-lc".to_string(), r#"exec claude -p --settings '{"disableAllHooks":true}' --output-format json /usage"#.to_string()]);
+        // Windows keeps cmd /c.
+        assert_eq!(usage_command_for(&Source::Local, false).0, "cmd.exe");
+    }
     use std::cell::RefCell;
     use std::collections::HashMap;
 
@@ -276,7 +312,7 @@ mod tests {
     #[test]
     fn prefers_windows_when_present() {
         let r = FakeRunner::new(&[("where.exe claude", Ok("C:\\x\\claude.exe\r\n".into()))]);
-        assert_eq!(detect(&r, &SourcePref::Auto), Source::Windows);
+        assert_eq!(detect(&r, &SourcePref::Auto), Source::Local);
     }
 
     #[test]
@@ -319,7 +355,7 @@ mod tests {
         let r = FakeRunner::new(&[]);
         let pref = SourcePref::Wsl { distro: "Debian".into() };
         assert_eq!(detect(&r, &pref), Source::Wsl { distro: "Debian".into() });
-        assert_eq!(detect(&r, &SourcePref::Windows), Source::Windows);
+        assert_eq!(detect(&r, &SourcePref::Windows), Source::Local);
         assert!(r.calls.borrow().is_empty());
     }
 
@@ -338,7 +374,7 @@ mod tests {
 
     #[test]
     fn windows_command_shape() {
-        let (p, a) = usage_command(&Source::Windows);
+        let (p, a) = usage_command(&Source::Local);
         assert_eq!(p, "cmd.exe");
         assert_eq!(
             a,

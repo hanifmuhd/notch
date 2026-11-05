@@ -157,7 +157,7 @@ pub fn git_bash_path(win: &str) -> String {
 pub fn target_for(source: Option<&Source>, start_wsl: bool, runner: &dyn Runner) -> Result<Target, &'static str> {
     match source {
         None | Some(Source::NotFound) => Err(HINT_NOT_FOUND),
-        Some(Source::Windows) => Ok(Target::Windows),
+        Some(Source::Local) => Ok(Target::Windows),
         Some(Source::Wsl { distro }) if !start_wsl && !wsl_running(runner, distro) => Err(HINT_START_WSL),
         Some(Source::Wsl { distro }) => Ok(Target::Wsl { distro: distro.clone() }),
     }
@@ -520,7 +520,7 @@ mod tests {
         let none = FakeRunner::new(vec![]);
         assert_eq!(target_for(None, true, &none), Err(HINT_NOT_FOUND));
         assert_eq!(target_for(Some(&Source::NotFound), true, &none), Err(HINT_NOT_FOUND));
-        assert_eq!(target_for(Some(&Source::Windows), false, &none), Ok(Target::Windows));
+        assert_eq!(target_for(Some(&Source::Local), false, &none), Ok(Target::Windows));
         let wsl = Source::Wsl { distro: "Ubuntu".into() };
         let stopped = FakeRunner::new(vec![("wsl.exe -l --running -q", Ok(String::new()))]);
         assert_eq!(target_for(Some(&wsl), false, &stopped), Err(HINT_START_WSL));

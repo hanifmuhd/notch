@@ -344,7 +344,7 @@ mod tests {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 10.0, now);
         r.session.resets_at = None;
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Full);
         assert_eq!(vm.pill_text.as_deref(), Some("Session full"));
     }
@@ -379,7 +379,7 @@ mod tests {
         let now = local(28, 10, 0);
         let r = reading(10.0, 10.0, now);
         // 133 min left of 300 -> 55.67 % passed
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.session.pace_text, "56% of time passed");
         assert_eq!(vm.session.value_text, "10%");
     }
@@ -388,7 +388,7 @@ mod tests {
     fn runs_out_text() {
         let now = local(28, 10, 0);
         let r = reading(80.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         let t = runs_out_at(80.0, SESSION_WINDOW, utc(now), r.session.resets_at.unwrap()).unwrap();
         let want = format!("Runs out around {}", t.with_timezone(&Local).format("%H:%M"));
         assert_eq!(vm.session.runs_out_text, Some(want));
@@ -401,7 +401,7 @@ mod tests {
     fn runs_out_hidden_when_full() {
         let now = local(28, 10, 0);
         let r = reading(100.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.session.level, Level::Full);
         assert_eq!(vm.session.runs_out_text, None);
     }
@@ -410,10 +410,10 @@ mod tests {
     fn stale_state_and_text() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), false, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Stale);
         assert_eq!(vm.updated_text, "As of 10:51");
-        let ok = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let ok = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!((ok.pill, ok.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
@@ -421,7 +421,7 @@ mod tests {
     fn old_reading_is_stale() {
         let now = local(28, 11, 3); // reading() was fetched at 10:51
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Stale, "As of 10:51"));
     }
 
@@ -429,7 +429,7 @@ mod tests {
     fn recent_reading_not_stale() {
         let now = local(28, 10, 55);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Normal, "Updated 10:51"));
     }
 
@@ -437,10 +437,10 @@ mod tests {
     fn full_beats_alert_beats_stale() {
         let now = local(28, 11, 0);
         let r = reading(100.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), false, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Full);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), false, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill, PillState::Alert);
     }
 
@@ -449,7 +449,7 @@ mod tests {
         let now = local(28, 10, 0);
         let mut r = reading(100.0, 100.0, now);
         r.session.resets_at = Some(utc(now) + Duration::minutes(80));
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill_text.as_deref(), Some("back in 1:20"));
     }
 
@@ -457,7 +457,7 @@ mod tests {
     fn pill_text_full_week() {
         let now = local(28, 10, 51);
         let r = reading(10.0, 100.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!(vm.pill_text.as_deref(), Some("Week back in 1d 22h"));
     }
 
@@ -472,7 +472,7 @@ mod tests {
     fn logged_out_pill() {
         let now = local(28, 10, 0);
         let r = reading(10.0, 10.0, now);
-        let vm = build(Some(&r), true, Some(&Source::Windows), &Settings::default(), true, now);
+        let vm = build(Some(&r), true, Some(&Source::Local), &Settings::default(), true, now);
         assert_eq!(vm.pill, PillState::LoggedOut);
         assert_eq!(vm.updated_text, "Log in to Claude Code: run claude, then /login");
         assert_eq!(serde_json::to_string(&vm.pill).unwrap(), "\"logged_out\"");
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn no_data() {
-        let vm = build(None, true, Some(&Source::Windows), &Settings::default(), false, local(28, 10, 0));
+        let vm = build(None, true, Some(&Source::Local), &Settings::default(), false, local(28, 10, 0));
         assert_eq!(vm.pill, PillState::NoData);
         assert_eq!(vm.session.value_text, "–");
         assert_eq!(vm.week.value_text, "–");
@@ -495,7 +495,7 @@ mod tests {
     fn session_value(used: f64) -> String {
         let now = local(28, 10, 0);
         let r = reading(used, 10.0, now);
-        build(Some(&r), true, Some(&Source::Windows), &Settings::default(), false, now).session.value_text
+        build(Some(&r), true, Some(&Source::Local), &Settings::default(), false, now).session.value_text
     }
 
     #[test]
@@ -516,7 +516,7 @@ mod tests {
     fn stale_text_even_when_alert() {
         let now = local(28, 11, 0);
         let r = reading(10.0, 95.0, now);
-        let vm = build(Some(&r), false, Some(&Source::Windows), &Settings::default(), false, now);
+        let vm = build(Some(&r), false, Some(&Source::Local), &Settings::default(), false, now);
         assert_eq!((vm.pill, vm.updated_text.as_str()), (PillState::Alert, "As of 10:51"));
     }
 
@@ -561,8 +561,8 @@ mod tests {
         let now = local(28, 10, 0);
         let r = reading(42.0, 68.0, now);
         let build_with = |r: Option<&UsageReading>, src: Source| build(r, true, Some(&src), &Settings::default(), false, now);
-        assert_eq!(tray_tooltip(&build_with(Some(&r), Source::Windows)), "Session 42%, week 68%");
-        assert_eq!(tray_tooltip(&build_with(None, Source::Windows)), "Claude Notch");
+        assert_eq!(tray_tooltip(&build_with(Some(&r), Source::Local)), "Session 42%, week 68%");
+        assert_eq!(tray_tooltip(&build_with(None, Source::Local)), "Claude Notch");
         assert_eq!(tray_tooltip(&build_with(None, Source::NotFound)), "Claude Notch");
     }
 
