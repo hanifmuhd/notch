@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default permissions for the notch window",
-  "windows": ["notch"],
+  "description": "Default permissions for the notch and settings windows",
+  "windows": ["notch", "settings"],
   "permissions": ["core:default"]
 }

@@ -4,7 +4,7 @@ use crate::app_state::AppState;
 use crate::view::{tray_toggle_label, tray_tooltip, ViewModel};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{TrayIcon, TrayIconBuilder};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_autostart::ManagerExt;
 
 /// Handles kept so the tooltip and the Show/Hide text can follow the app.
@@ -19,15 +19,24 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     // Default off; the box shows what Windows really has registered.
     let on = app.autolaunch().is_enabled().unwrap_or(false);
     let autostart = CheckMenuItem::with_id(app, "autostart", "Start with Windows", true, on, None::<&str>)?;
+    let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let refresh = MenuItem::with_id(app, "refresh", "Refresh now", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle, &autostart, &refresh, &PredefinedMenuItem::separator(app)?, &quit])?;
+    let menu = Menu::with_items(app, &[&toggle, &autostart, &settings, &refresh, &PredefinedMenuItem::separator(app)?, &quit])?;
 
     let mut builder = TrayIconBuilder::new().tooltip("Claude Notch").menu(&menu).on_menu_event({
         let autostart = autostart.clone();
         move |app, event| match event.id().as_ref() {
             "toggle" => toggle_notch(app),
             "autostart" => switch_autostart(app, &autostart),
+            "settings" => {
+                let app = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(e) = crate::show_settings(&app) {
+                        eprintln!("tray: open settings failed: {e}");
+                    }
+                });
+            }
             "refresh" => crate::refresh_now(app.clone()),
             "quit" => app.exit(0),
             _ => {}
@@ -58,9 +67,7 @@ fn toggle_notch(app: &AppHandle) {
         eprintln!("tray: save show_notch failed: {e}");
         return;
     }
-    crate::apply_visibility(app);
-    // The webview keeps its own copy of the settings and would otherwise save the old show_notch back.
-    let _ = app.emit("settings-changed", ());
+    crate::apply_visibility(app); // save_settings already told both pages to reload their copy
 }
 
 fn switch_autostart(app: &AppHandle, item: &CheckMenuItem<tauri::Wry>) {

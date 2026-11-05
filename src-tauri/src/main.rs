@@ -247,6 +247,8 @@ fn save_settings(app: AppHandle, state: State<AppState>, settings: Settings) -> 
         let _ = kick.send(()); // prayer on/off, zone or reminder may have changed
     }
     let vm = emit(&app, announce(&events));
+    // Both pages keep a copy of the settings; each reloads it after any save.
+    let _ = app.emit("settings-changed", ());
     on_alert(&app, events);
     if source_changed {
         move_hooks(app.clone(), old_source);
@@ -365,6 +367,30 @@ fn list_screens(app: AppHandle) -> Vec<ScreenInfo> {
 #[tauri::command]
 async fn list_distros() -> Vec<String> {
     tauri::async_runtime::spawn_blocking(|| source::list_distros(&SystemRunner)).await.unwrap_or_default()
+}
+
+/// Opens the settings window, or brings the open one to the front (settings window spec).
+/// Async: creating a window inside a synchronous command can deadlock on Windows.
+#[tauri::command]
+async fn open_settings(app: AppHandle) -> Result<(), String> {
+    show_settings(&app)
+}
+
+pub fn show_settings(app: &AppHandle) -> Result<(), String> {
+    if let Some(w) = app.get_webview_window("settings") {
+        let _ = w.unminimize();
+        let _ = w.show();
+        return w.set_focus().map_err(|e| e.to_string());
+    }
+    tauri::WebviewWindowBuilder::new(app, "settings", tauri::WebviewUrl::App("settings.html".into()))
+        .title("Claude Notch settings")
+        .inner_size(640.0, 460.0)
+        .min_inner_size(560.0, 400.0)
+        .center()
+        .background_color(tauri::window::Color(0, 0, 0, 255))
+        .build()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// The newer version on GitHub, if any; the page asks on start and every 6 hours.
@@ -757,7 +783,7 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .on_window_event(|window, event| {
-            if let WindowEvent::ScaleFactorChanged { .. } = event {
+            if let (WindowEvent::ScaleFactorChanged { .. }, "notch") = (event, window.label()) {
                 let app = window.app_handle().clone();
                 std::thread::spawn(move || replace(&app));
             }
@@ -771,6 +797,7 @@ fn main() {
             set_hit_rects,
             get_zones,
             check_update,
+            open_settings,
             install_update,
             focus_previous,
             list_distros,
