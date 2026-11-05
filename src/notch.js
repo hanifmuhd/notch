@@ -240,17 +240,25 @@ let ageTimer;
 
 // The panel grows from the pill's size to its content size; both are CSS variables so the
 // spring in notch.css animates width and height together.
+// The height the shown view needs. Not scrollHeight: that never drops below the current
+// height, so the panel would stay settings-tall after going back to the usage view.
+function contentH() {
+  const inner = $('#panel-inner');
+  const cs = getComputedStyle(inner);
+  const view = views.usage.hidden ? views.settings : views.usage;
+  return view.offsetHeight + parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+}
+
 function fitPanel() {
   notch.style.setProperty('--pill-w', pill.offsetWidth + 'px');
   // Never taller than the window. On the usage view only the session list scrolls; the rest
   // (e.g. settings with a WSL source) scrolls as a whole.
   const room = innerHeight - ((notch.dataset.mode || 'top') === 'top' ? 4 : 12);
-  const inner = $('#panel-inner');
   const list = $('#session-list');
   list.style.maxHeight = '';
-  const over = inner.scrollHeight - room;
+  const over = contentH() - room;
   if (over > 0 && !views.usage.hidden) list.style.maxHeight = Math.max(list.scrollHeight - over, 24) + 'px';
-  notch.style.setProperty('--panel-h', Math.min(inner.scrollHeight, room) + 'px');
+  notch.style.setProperty('--panel-h', Math.min(contentH(), room) + 'px');
 }
 
 // The window is a fixed size; only the visible shape takes the mouse (spec 4, approach A).
@@ -263,7 +271,7 @@ function reportHits() {
   if (isOpen || morphing) {
     const r = panel.getBoundingClientRect();
     const w = parseFloat(getComputedStyle(notch).getPropertyValue('--open-w')) || panel.offsetWidth;
-    const h = $('#panel-inner').scrollHeight;
+    const h = contentH();
     const align = notch.dataset.align || 'centre';
     if ((notch.dataset.mode || 'top') !== 'top') {
       // taskbar: the panel is anchored bottom-right and grows up
@@ -329,7 +337,8 @@ function showView(name, focusEl) {
 }
 
 // Content changes (settings view, sessions) change the panel height.
-new ResizeObserver(() => { fitPanel(); reportHits(); }).observe($('#panel-inner'));
+const fitObserver = new ResizeObserver(() => { fitPanel(); reportHits(); });
+[$('#panel-inner'), views.usage, views.settings].forEach((e) => fitObserver.observe(e));
 new ResizeObserver(() => { fitPanel(); reportHits(); }).observe(pill);
 new ResizeObserver(reportHits).observe(pod);
 window.addEventListener('resize', reportHits);
