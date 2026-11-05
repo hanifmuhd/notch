@@ -251,6 +251,8 @@ button { font: inherit; color: inherit; }
   background: var(--hover); color: var(--ink); border: 0; border-radius: 8px; font-size: 12.5px; cursor: pointer;
 }
 .select:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+/* The open list is drawn by Windows on white unless the options carry their own colours. */
+.select option, .select optgroup { background: var(--surface); color: var(--ink); }
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
 .segmented label { position: relative; cursor: pointer; }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
