@@ -53,7 +53,7 @@ button { font: inherit; color: inherit; }
 .segmented { display: inline-flex; gap: 2px; padding: 2px; border-radius: 9px; background: var(--hover); }
 .segmented label { position: relative; cursor: pointer; }
 .segmented input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
-.segmented span { display: block; padding: 7px 9px; font-size: 13px; line-height: 1; color: var(--ink-muted); border-radius: 7px;
+.segmented span { display: block; padding: 8px 10px; font-size: 13px; line-height: 1; color: var(--ink-muted); border-radius: 7px;
   transition: color 150ms var(--out), background-color 150ms var(--out); }
 .segmented label:hover span { color: var(--ink); }
 .segmented input:checked + span { color: var(--black); background: var(--cream); font-weight: 700; }

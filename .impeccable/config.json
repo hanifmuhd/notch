@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          "src/settings.html"
+        ],
+        "createdAt": "2026-11-05T05:03:55.379Z",
+        "reason": "Claude: all 6 flags are the segmented-control track's 2px inset; each segment is its own padded pill (8px x 10px)"
+      }
+    ]
+  }
+}
